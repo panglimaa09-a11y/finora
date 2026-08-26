@@ -2,11 +2,12 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b1020" />
     <title>FINORA — Real Wallet</title>
     <link rel="stylesheet" href="/src/dapin-credit.css" />
     <link rel="stylesheet" href="/src/dapin-loan-credit.css" />
+    <link rel="stylesheet" href="/src/dapin-mobile.css?v=297dafa8" />
   </head>
   <body>
     <div id="app"></div>
@@ -16,5 +17,30 @@
     <script type="module" src="/src/withdraw-enhancer.js"></script>
     <script type="module" src="/src/dapin-graphs.js?v=20260826-03"></script>
     <script type="module" src="/src/admin-center.js?v=20260826-01"></script>
+    <script>
+      (() => {
+        const init = () => {
+          const shell = document.querySelector('.dapin-admin-shell, .dapin-shell');
+          const sidebar = document.querySelector('.dapin-admin-sidebar, .dapin-sidebar');
+          if (!shell || !sidebar || document.querySelector('.dapin-mobile-header')) return;
+          const header = document.createElement('header');
+          header.className = 'dapin-mobile-header';
+          header.innerHTML = '<button class="dapin-mobile-menu-btn" type="button" aria-label="Buka menu DAPIN">☰</button><strong>DAPIN</strong><span>● Online</span>';
+          document.body.appendChild(header);
+          const overlay = document.createElement('div');
+          overlay.className = 'dapin-mobile-overlay';
+          document.body.appendChild(overlay);
+          const close = () => { sidebar.classList.remove('is-open'); shell.classList.remove('sidebar-open'); overlay.classList.remove('is-visible'); };
+          header.querySelector('.dapin-mobile-menu-btn').addEventListener('click', () => {
+            sidebar.classList.add('is-open'); shell.classList.add('sidebar-open'); overlay.classList.add('is-visible');
+          });
+          overlay.addEventListener('click', close);
+          sidebar.addEventListener('click', e => { if (e.target.closest('a,button,[role="button"]')) setTimeout(close, 100); });
+        };
+        const observer = new MutationObserver(init);
+        observer.observe(document.body, { childList: true, subtree: true });
+        init();
+      })();
+    </script>
   </body>
 </html>
