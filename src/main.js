@@ -1,128 +1,17 @@
 import './style.css'
-import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-const app = document.getElementById('app')
-
-const money = (n=0) => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
-const escapeHtml = (s='') => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
-const safeUrl = (url='') => { try { const u=new URL(url); return ['https:','http:'].includes(u.protocol)?u.toString():'' } catch { return '' } }
-
-const BANKS = [
-  ['002','BRI'],['008','Mandiri'],['009','BNI'],['011','Danamon'],['013','Permata'],['014','BCA'],
-  ['016','Maybank'],['019','Panin'],['022','CIMB Niaga'],['023','UOB Indonesia'],['028','OCBC NISP'],
-  ['031','Citibank'],['046','DBS Indonesia'],['087','Bukopin'],['095','JTrust Bank'],['097','Mayapada'],
-  ['110','BTPN / SMBC Indonesia'],['111','Bank of India Indonesia'],['112','Bank Jago'],['113','Artha Graha'],
-  ['114','Bank Multiarta Sentosa'],['115','Bank Woori Saudara'],['116','BCA Syariah'],['117','QNB Indonesia'],
-  ['118','Bank Sahabat Sampoerna'],['119','KEB Hana Indonesia'],['120','Shinhan Indonesia'],['121','MNC Bank'],
-  ['122','Bank Neo Commerce'],['147','Muamalat'],['153','Sinarmas'],['200','BTN'],['213','BTPN Syariah'],
-  ['422','BSI'],['451','BSI'],['506','Bank Mega Syariah'],['513','Bank Ina Perdana'],['535','SeaBank'],
-  ['542','Bank Jago'],['564','Mandiri Taspen'],['567','Bank Aladin Syariah']
+const menu=[
+ {section:'FINORA',items:[['dashboard','Dashboard','⌂'],['topup','Top Up','＋'],['withdraw','Tarik Dana','↗'],['transactions','Transaksi','↔'],['savings','Tabungan','◇']]},
+ {section:'DAPIN',items:[['dapin-dashboard','Dashboard DAPIN','▦'],['members','Anggota','♙'],['deposits','Simpanan','＋'],['loans','Pinjaman','▣'],['installments','Angsuran','◷'],['cash','Kas','◈'],['reports','Laporan','▤']]},
+ {section:'SISTEM',items:[['security','Security','◉'],['settings','Pengaturan','⚙']]}
 ]
-
-const E_WALLETS = [
-  ['DANA','DANA'],
-  ['GOPAY','GoPay'],
-  ['OVO','OVO'],
-  ['SHOPEEPAY','ShopeePay'],
-  ['LINKAJA','LinkAja']
-]
-
-let state = { user:null, wallet:null, transactions:[], view:'dashboard', modal:null, loading:true, error:'' }
-const configured = Boolean(supabaseUrl && supabaseAnonKey)
-export const supabase = configured ? createClient(supabaseUrl, supabaseAnonKey) : null
-
-function renderSetup(){app.innerHTML=`<main class="auth"><section class="auth-card"><div class="brand">FINORA</div><div class="eyebrow">SETUP REQUIRED</div><h1>FINORA sudah terhubung ke GitHub.</h1><p class="muted">Frontend berhasil dimuat. Supabase belum dikonfigurasi di environment aplikasi.</p><div class="notice"><strong>Tambahkan Environment Variables:</strong><br><code>VITE_SUPABASE_URL</code><br><code>VITE_SUPABASE_ANON_KEY</code></div><p class="tiny">Setelah variable ditambahkan di Vercel, lakukan redeploy. Jangan masukkan service_role key ke frontend atau GitHub.</p></section><section class="auth-art"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="art-copy"><span>FINORA • WALLET</span><h2>Frontend aktif. Backend siap disambungkan.</h2></div></section></main>`}
-
-async function loadWallet(){
-  if(!state.user||!supabase)return
-  const {data,error}=await supabase.from('wallets').select('*').eq('user_id',state.user.id).maybeSingle()
-  if(error) state.error=error.message
-  state.wallet=data||null
-  const {data:ledger,error:ledgerError}=await supabase.from('wallet_transactions').select('*').eq('user_id',state.user.id).order('created_at',{ascending:false}).limit(20)
-  if(ledgerError) state.error=state.error||ledgerError.message
-  state.transactions=ledger||[]
-}
-
-function render(){if(!configured){renderSetup();return}if(state.loading){app.innerHTML='<div class="loading">Memuat FINORA…</div>';return}if(!state.user){renderAuth();return}renderApp()}
-
-function renderAuth(){app.innerHTML=`<main class="auth"><section class="auth-card"><div class="brand">FINORA</div><div class="eyebrow">DIGITAL WALLET</div><h1>Keuanganmu, lebih terarah.</h1><p class="muted">Masuk untuk mengakses wallet, tabungan, transfer, dan riwayat transaksi.</p><div class="oauths"><button data-provider="google">Continue with Google</button><button data-provider="facebook">Continue with Facebook</button><button data-provider="apple">Continue with Apple</button></div><p class="tiny">Provider OAuth diaktifkan melalui Supabase Auth.</p>${state.error?`<div class="notice">${escapeHtml(state.error)}</div>`:''}</section><section class="auth-art"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="art-copy"><span>SAFE • SMART • SIMPLE</span><h2>Wallet core siap dikembangkan ke payment provider produksi.</h2></div></section></main>`}
-
-function renderApp(){
-  const w=state.wallet||{available_balance:0,pending_balance:0}
-  const nav=[['dashboard','Dashboard'],['topup','Top Up'],['withdraw','Tarik Dana'],['savings','Tabungan'],['security','Security']]
-  app.innerHTML=`<div class="shell"><header class="topbar"><div class="brand">FINORA</div><div class="head-actions"><span class="verified">● Wallet Active</span><button id="logout" class="ghost">Keluar</button></div></header><main class="content"><div class="welcome"><div><div class="eyebrow">FINORA WALLET</div><h1>Halo, ${escapeHtml(state.user.user_metadata?.full_name||state.user.email?.split('@')[0]||'Pengguna')}</h1><p class="muted">${escapeHtml(state.user.email||'')}</p></div><div class="quick"><button data-action="topup">＋ Top Up</button><button data-action="withdraw">↗ Tarik Dana</button></div></div><nav class="nav">${nav.map(([id,label])=>`<button class="navitem ${state.view===id?'active':''}" data-view="${id}">${label}</button>`).join('')}</nav>${state.error?`<div class="notice">${escapeHtml(state.error)}</div>`:''}${renderView()}</main></div>${state.modal?renderModal():''}`
-}
-
-function renderView(){
-  if(state.view==='topup')return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">WALLET</div><h2>Isi saldo</h2></div><span class="pill">Payment protected</span></div><div class="form-grid"><label>Nominal<input id="topupAmount" inputmode="numeric" placeholder="100000" /></label><label>Metode<select id="topupMethod"><option value="qris">QRIS</option><option value="va">Virtual Account</option><option value="bank_transfer">Bank Transfer</option></select></label></div><button id="submitTopup" class="primary">Buat pembayaran</button><p class="tiny">Saldo hanya bertambah setelah provider mengonfirmasi pembayaran melalui webhook server yang terverifikasi.</p></section>`
-  if(state.view==='withdraw')return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">PAYOUT</div><h2>Tarik dana</h2></div><span class="pill">${money(state.wallet?.available_balance||0)} tersedia</span></div><div class="form-grid"><label>Nominal<input id="withdrawAmount" inputmode="numeric" placeholder="100000" /></label><label>Tujuan<select id="destinationType"><option value="bank">🏦 Bank</option><option value="ewallet">📱 Dompet Digital</option></select></label><label id="bankField">Pilih Bank<select id="bankCode"><option value="">Pilih bank</option>${BANKS.map(([code,name])=>`<option value="${code}">${escapeHtml(name)}</option>`).join('')}</select></label><label id="ewalletField" style="display:none">Pilih Dompet<select id="ewalletCode"><option value="">Pilih dompet digital</option>${E_WALLETS.map(([code,name])=>`<option value="${code}">${escapeHtml(name)}</option>`).join('')}</select></label><label id="accountNumberLabel">Nomor Rekening<input id="accountNumber" inputmode="numeric" placeholder="Nomor rekening / nomor HP" /></label><label>Nama Pemilik<input id="accountName" placeholder="Nama sesuai rekening / akun" /></label></div><button id="submitWithdraw" class="primary">Ajukan penarikan</button><p class="tiny">Pilih Bank atau Dompet Digital. Kode tujuan dikirim otomatis ke backend; kamu tidak perlu mengetik kode bank.</p></section>`
-  if(state.view==='savings')return `<section class="panel saving-empty"><div class="save-icon">◈</div><h2>Tabungan</h2><p>Mesin target tabungan siap ditambahkan di atas wallet ledger FINORA.</p><button class="primary" data-action="topup">Mulai dari Top Up</button></section>`
-  if(state.view==='security')return `<section class="panel"><div class="eyebrow">SECURITY CENTER</div><h2>Lapisan keamanan</h2><div class="security-grid"><div><strong>OAuth</strong><span>Aktif</span></div><div><strong>RLS</strong><span>Aktif</span></div><div><strong>Ledger</strong><span>Server-side</span></div><div><strong>Webhook</strong><span>Verified</span></div></div></section>`
-  return `<section class="cards"><article class="wallet-card"><div class="card-top"><span>Available Balance</span><span class="chip">IDR</span></div><strong>${money(state.wallet?.available_balance||0)}</strong><div class="card-bottom"><span>Pending ${money(state.wallet?.pending_balance||0)}</span><span>FINORA WALLET</span></div></article><article class="stat"><span>Total transaksi</span><strong>${state.transactions.length}</strong><small>20 transaksi terbaru</small></article><article class="stat"><span>Status wallet</span><strong>Active</strong><small>RLS protected</small></article></section><section class="panel"><div class="panel-head"><div><div class="eyebrow">LEDGER</div><h2>Aktivitas terbaru</h2></div><button class="link" id="refreshWallet">Refresh</button></div>${renderTransactions()}</section>`
-}
-
-function renderTransactions(){
-  if(!state.transactions.length)return `<div class="empty">Belum ada transaksi.</div>`
-  return `<div class="tx-list">${state.transactions.map(t=>{const credit=['topup','transfer_in','refund','adjustment'].includes(t.type);const label=t.description||t.type||'Transaksi';return `<div class="tx"><div><strong>${escapeHtml(label)}</strong><small>${new Date(t.created_at).toLocaleString('id-ID')}</small></div><strong class="${credit?'credit':'debit'}">${credit?'+':'-'}${money(t.amount)}</strong></div>`}).join('')}</div>`
-}
-
-function renderModal(){return `<div class="modal-wrap"><div class="modal"><button class="close" id="closeModal">×</button>${state.modal}</div></div>`}
-
-async function signIn(provider){state.error='';render();const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}});if(error){state.error=error.message;render()}}
-
-async function invokeFunction(name,body){
-  const {data:{session}}=await supabase.auth.getSession()
-  if(!session) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-  const {data,error}=await supabase.functions.invoke(name,{body,headers:{Authorization:`Bearer ${session.access_token}`}})
-  if(error){let detail=error.message||'Permintaan ke Edge Function gagal.';try{const response=error.context;if(response&&typeof response.text==='function'){const text=await response.text();if(text){try{const parsed=JSON.parse(text);detail=parsed.message||parsed.error||parsed.msg||text}catch{detail=text}}}}catch{}throw new Error(`Edge Function "${name}" gagal: ${detail}`)}
-  if(data?.error) throw new Error(data.error)
-  return data
-}
-
-async function doTopup(){
-  const amount=Number(document.getElementById('topupAmount').value),method=document.getElementById('topupMethod').value
-  if(!Number.isFinite(amount)||amount<10000){alert('Minimum top up Rp10.000');return}
-  try{
-    const data=await invokeFunction('provider-create-topup',{amount,method})
-    const paymentUrl=safeUrl(data.payment_url)
-    state.modal=`<h2>Pembayaran dibuat</h2><p>Top Up ${money(amount)} sudah dibuat dengan status <strong>pending</strong>.</p>${paymentUrl?`<a class="primary" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noopener noreferrer">Lanjut ke pembayaran Midtrans</a>`:'<p class="hint">Instruksi pembayaran belum tersedia. Periksa konfigurasi payment provider.</p>'}<span class="hint">Saldo hanya bertambah setelah Midtrans mengirim notifikasi settlement yang lolos verifikasi signature.</span>`
-    await loadWallet();render()
-  }catch(err){alert(err.message)}
-}
-
-function syncDestinationFields(){
-  const type=document.getElementById('destinationType')?.value
-  const bankField=document.getElementById('bankField')
-  const ewalletField=document.getElementById('ewalletField')
-  const accountNumber=document.getElementById('accountNumber')
-  const accountNumberLabel=document.getElementById('accountNumberLabel')
-  if(!bankField||!ewalletField)return
-  const isEwallet=type==='ewallet'
-  bankField.style.display=isEwallet?'none':''
-  ewalletField.style.display=isEwallet?'':'none'
-  if(accountNumberLabel)accountNumberLabel.querySelector('label')
-  if(accountNumber)accountNumber.placeholder=isEwallet?'Nomor HP / nomor akun e-wallet':'Nomor rekening bank'
-  accountNumber.inputMode=isEwallet?'numeric':'numeric'
-}
-
-async function doWithdraw(){
-  const amount=Number(document.getElementById('withdrawAmount').value)
-  const type=document.getElementById('destinationType').value
-  const bank_code=type==='bank'?document.getElementById('bankCode').value.trim():document.getElementById('ewalletCode').value.trim()
-  const account_number=document.getElementById('accountNumber').value.trim()
-  const account_name=document.getElementById('accountName').value.trim()
-  if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi nominal, tujuan, nomor rekening/HP, dan nama pemilik.');return}
-  try{
-    const data=await invokeFunction('create-withdrawal',{amount,bank_code,account_number,account_name,destination_type:type})
-    await loadWallet()
-    state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id||'—')}</p><span class="hint">Tujuan: ${type==='ewallet'?'Dompet Digital':'Bank'}. Penarikan menunggu payout provider.</span>`
-    render()
-  }catch(err){alert(err.message)}
-}
-
-document.addEventListener('change',e=>{if(e.target?.id==='destinationType')syncDestinationFields()})
-document.addEventListener('click',async e=>{const btn=e.target.closest('button');if(!btn)return;if(btn.dataset.provider)return signIn(btn.dataset.provider);if(btn.id==='logout'){await supabase.auth.signOut();return}if(btn.id==='closeModal'){state.modal=null;render();return}if(btn.id==='refreshWallet'){state.error='';await loadWallet();render();return}if(btn.dataset.view){state.view=btn.dataset.view;state.error='';render();return}if(btn.dataset.action){state.view=btn.dataset.action;state.error='';render();return}if(btn.id==='submitTopup')return doTopup();if(btn.id==='submitWithdraw')return doWithdraw()})
-
-if(configured){supabase.auth.onAuthStateChange(async(_event,session)=>{state.user=session?.user||null;if(state.user)await loadWallet();else{state.wallet=null;state.transactions=[]}state.loading=false;render()});(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()}else{state.loading=false;render()}
+const money=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(n)
+let active='dashboard'
+function label(id){return menu.flatMap(g=>g.items).find(x=>x[0]===id)?.[1]||'Dashboard'}
+function tx(){return [['Top Up','26 Agu 2026, 10:24','+Rp1.500.000','credit'],['Pembayaran','25 Agu 2026, 18:12','-Rp350.000','debit'],['Simpanan DAPIN','25 Agu 2026, 09:40','-Rp250.000','debit'],['Transfer Masuk','24 Agu 2026, 14:21','+Rp750.000','credit']].map(x=>`<div class="tx"><div class="tx-icon">${x[0][0]}</div><div class="tx-info"><b>${x[0]}</b><small>${x[1]}</small></div><strong class="${x[3]}">${x[2]}</strong></div>`).join('')}
+function wallet(){return `<div class="page"><div class="hero"><div><div class="eyebrow">FINORA WALLET</div><h1>Selamat datang kembali, Angga.</h1><p>Kelola keuangan, pembayaran, dan aktivitas wallet dari satu tempat.</p></div><div class="hero-actions"><button class="secondary">＋ Top Up</button><button class="primary">↗ Tarik Dana</button></div></div><div class="stats"><article class="balance"><span>Saldo tersedia</span><strong>${money(12500000)}</strong><small>+8,4% dari bulan lalu</small><div class="balance-line"></div></article><article><span>Total Transaksi</span><strong>128</strong><small>↗ 12 transaksi minggu ini</small></article><article><span>Tabungan</span><strong>${money(4750000)}</strong><small>Target 63% tercapai</small></article><article><span>Status</span><strong class="online">Aktif</strong><small>Wallet terlindungi RLS</small></article></div><div class="grid2"><section class="panel"><div class="panel-head"><div><div class="eyebrow">TRANSAKSI</div><h2>Aktivitas terbaru</h2></div><button class="link">Lihat semua →</button></div>${tx()}</section><section class="panel dapin-card"><div class="panel-head"><div><div class="eyebrow">DAPIN</div><h2>Simpan Pinjam</h2></div><span class="badge">Terintegrasi</span></div><div class="dapin-mini"><div><span>Total simpanan</span><b>${money(28500000)}</b></div><div><span>Pinjaman berjalan</span><b>${money(12000000)}</b></div></div><button class="primary wide" data-id="dapin-dashboard">Buka DAPIN →</button></section></div></div>`}
+function dapin(){return `<div class="page"><div class="hero dapin-hero"><div><div class="eyebrow">DAPIN • BALONGBENDO</div><h1>Dashboard Simpan Pinjam</h1><p>Kelola anggota, simpanan, pinjaman, angsuran, kas, dan laporan.</p></div><button class="primary">＋ Transaksi Baru</button></div><div class="stats"><article><span>Total Anggota</span><strong>248</strong><small>+12 bulan ini</small></article><article><span>Total Simpanan</span><strong>${money(28500000)}</strong><small>Pokok + wajib + sukarela</small></article><article><span>Pinjaman Berjalan</span><strong>${money(12000000)}</strong><small>34 pinjaman aktif</small></article><article><span>Angsuran Hari Ini</span><strong>${money(1850000)}</strong><small class="warning">7 pembayaran menunggu</small></article></div><div class="grid2"><section class="panel"><div class="panel-head"><div><div class="eyebrow">RINGKASAN</div><h2>Portofolio DAPIN</h2></div></div><div class="progress-wrap">${[['Pinjaman tersalurkan',68],['Angsuran lancar',91],['Target simpanan',74]].map(x=>`<div class="progress-label"><span>${x[0]}</span><b>${x[1]}%</b></div><div class="progress"><i style="width:${x[1]}%"></i></div>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><div class="eyebrow">JATUH TEMPO</div><h2>Angsuran terdekat</h2></div></div>${['Budi Santoso','Siti Aminah','Rizky Pratama'].map((n,i)=>`<div class="due"><div class="avatar small">${n[0]}</div><div><b>${n}</b><small>Angsuran ke-${i+2}</small></div><strong>${money(350000+i*75000)}</strong></div>`).join('')}</section></div></div>`}
+function module(){const names={members:['Anggota','Kelola data anggota DAPIN'],deposits:['Simpanan','Kelola simpanan pokok, wajib, dan sukarela'],loans:['Pinjaman','Pengajuan dan pinjaman berjalan'],installments:['Angsuran','Pembayaran dan jadwal angsuran'],cash:['Kas','Pemasukan dan pengeluaran kas'],reports:['Laporan','Laporan keuangan dan aktivitas DAPIN']};const [title,desc]=names[active];return `<div class="page"><div class="hero"><div><div class="eyebrow">DAPIN</div><h1>${title}</h1><p>${desc}.</p></div><button class="primary">＋ Tambah Data</button></div><section class="panel"><div class="placeholder"><div class="big-icon">◇</div><h2>Modul ${title} siap diintegrasikan</h2><p>Preview UI gabungan FINORA + DAPIN. Struktur sidebar dan halaman sudah disiapkan tanpa mengubah production.</p><button class="secondary" data-id="dapin-dashboard">← Kembali ke Dashboard DAPIN</button></div></section></div>`}
+function content(){if(active==='dapin-dashboard')return dapin();if(['members','deposits','loans','installments','cash','reports'].includes(active))return module();return wallet()}
+function render(){document.querySelector('#app').innerHTML=`<div class="layout"><aside class="sidebar"><div class="logo"><span class="logo-mark">F</span><div><b>FINORA</b><small>Financial Platform</small></div></div><div class="profile"><div class="avatar">A</div><div><b>Angga</b><small>Administrator</small></div><span class="dot"></span></div><nav>${menu.map(g=>`<div class="nav-group"><div class="section-title">${g.section}</div>${g.items.map(([id,text,icon])=>`<button class="nav-item ${active===id?'active':''}" data-id="${id}"><span class="nav-icon">${icon}</span><span>${text}</span></button>`).join('')}</div>`).join('')}</nav><div class="sidebar-bottom"><div class="status"><span></span> Sistem Online</div><button class="collapse">‹</button></div></aside><main class="main"><header class="topbar"><div><span class="crumb">FINORA</span><span class="slash">/</span><b>${label(active)}</b></div><div class="top-actions"><button class="icon-btn">⌕</button><button class="icon-btn">♧</button><div class="user-mini">A</div></div></header>${content()}</main></div>`;document.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{active=b.dataset.id;render()})}
+render()
