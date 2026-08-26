@@ -62,14 +62,26 @@ async function signIn(provider){
 async function invokeFunction(name,body){
   const {data:{session}}=await supabase.auth.getSession()
   if(!session) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
+
   const {data,error}=await supabase.functions.invoke(name,{body,headers:{Authorization:`Bearer ${session.access_token}`}})
+
   if(error){
-    const msg=String(error.message||'')
-    if(msg.toLowerCase().includes('failed to send a request')||msg.toLowerCase().includes('edge function')){
-      throw new Error(`Fitur ini belum aktif di server. Edge Function "${name}" belum ter-deploy di Supabase.`)
-    }
-    throw error
+    let detail=error.message||'Permintaan ke Edge Function gagal.'
+    try{
+      const response=error.context
+      if(response&&typeof response.text==='function'){
+        const text=await response.text()
+        if(text){
+          try{
+            const parsed=JSON.parse(text)
+            detail=parsed.message||parsed.error||parsed.msg||text
+          }catch{detail=text}
+        }
+      }
+    }catch{}
+    throw new Error(`Edge Function "${name}" gagal: ${detail}`)
   }
+
   if(data?.error) throw new Error(data.error)
   return data
 }
