@@ -1,16 +1,11 @@
-name: Build FINORA Release APK
+name: Build FINORA APK
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
-  build-release-apk:
+  build-apk:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
@@ -25,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Capacitor
+      - name: Install Capacitor Android
         run: npm install @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Build web app
@@ -34,7 +29,7 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Sync Capacitor
+      - name: Sync Android
         run: npx cap sync android
 
       - name: Setup Java
@@ -43,39 +38,16 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Restore release keystore
-        env:
-          FINORA_KEYSTORE_B64: ${{ secrets.FINORA_KEYSTORE_B64 }}
-        run: |
-          test -n "$FINORA_KEYSTORE_B64"
-          echo "$FINORA_KEYSTORE_B64" | base64 --decode > android/finora-release.jks
-
-      - name: Configure Android signing
+      - name: Build APK
         working-directory: android
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.FINORA_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.FINORA_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.FINORA_KEY_PASSWORD }}
-        run: |
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_ALIAS"
-          test -n "$KEY_PASSWORD"
-          cat > keystore.properties <<EOF
-          storeFile=finora-release.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
+        run: ./gradlew assembleDebug
 
-      - name: Build signed Release APK
-        working-directory: android
-        run: ./gradlew assembleRelease
+      - name: Prepare FINORA.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk FINORA.apk
 
-      - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk FINORA.apk
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload FINORA.apk
+        uses: actions/upload-artifact@v4
         with:
-          files: FINORA.apk
-          generate_release_notes: true
+          name: FINORA-APK
+          path: FINORA.apk
+          if-no-files-found: error
