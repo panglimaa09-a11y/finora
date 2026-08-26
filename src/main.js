@@ -21,6 +21,14 @@ const BANKS = [
   ['542','Bank Jago'],['564','Mandiri Taspen'],['567','Bank Aladin Syariah']
 ]
 
+const E_WALLETS = [
+  ['DANA','DANA'],
+  ['GOPAY','GoPay'],
+  ['OVO','OVO'],
+  ['SHOPEEPAY','ShopeePay'],
+  ['LINKAJA','LinkAja']
+]
+
 let state = { user:null, wallet:null, transactions:[], view:'dashboard', modal:null, loading:true, error:'' }
 const configured = Boolean(supabaseUrl && supabaseAnonKey)
 export const supabase = configured ? createClient(supabaseUrl, supabaseAnonKey) : null
@@ -49,7 +57,7 @@ function renderApp(){
 
 function renderView(){
   if(state.view==='topup')return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">WALLET</div><h2>Isi saldo</h2></div><span class="pill">Payment protected</span></div><div class="form-grid"><label>Nominal<input id="topupAmount" inputmode="numeric" placeholder="100000" /></label><label>Metode<select id="topupMethod"><option value="qris">QRIS</option><option value="va">Virtual Account</option><option value="bank_transfer">Bank Transfer</option></select></label></div><button id="submitTopup" class="primary">Buat pembayaran</button><p class="tiny">Saldo hanya bertambah setelah provider mengonfirmasi pembayaran melalui webhook server yang terverifikasi.</p></section>`
-  if(state.view==='withdraw')return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">PAYOUT</div><h2>Tarik dana</h2></div><span class="pill">${money(state.wallet?.available_balance||0)} tersedia</span></div><div class="form-grid"><label>Nominal<input id="withdrawAmount" inputmode="numeric" placeholder="100000" /></label><label>Pilih Bank<select id="bankCode"><option value="">Pilih bank</option>${BANKS.map(([code,name])=>`<option value="${code}">${escapeHtml(name)}</option>`).join('')}</select></label><label>Nomor Rekening<input id="accountNumber" inputmode="numeric" placeholder="Nomor rekening" /></label><label>Nama Pemilik<input id="accountName" placeholder="Nama sesuai rekening" /></label></div><button id="submitWithdraw" class="primary">Ajukan penarikan</button><p class="tiny">Pilih bank dari daftar. Kode bank dikirim otomatis ke backend; kamu tidak perlu mengetik kode bank.</p></section>`
+  if(state.view==='withdraw')return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">PAYOUT</div><h2>Tarik dana</h2></div><span class="pill">${money(state.wallet?.available_balance||0)} tersedia</span></div><div class="form-grid"><label>Nominal<input id="withdrawAmount" inputmode="numeric" placeholder="100000" /></label><label>Tujuan<select id="destinationType"><option value="bank">🏦 Bank</option><option value="ewallet">📱 Dompet Digital</option></select></label><label id="bankField">Pilih Bank<select id="bankCode"><option value="">Pilih bank</option>${BANKS.map(([code,name])=>`<option value="${code}">${escapeHtml(name)}</option>`).join('')}</select></label><label id="ewalletField" style="display:none">Pilih Dompet<select id="ewalletCode"><option value="">Pilih dompet digital</option>${E_WALLETS.map(([code,name])=>`<option value="${code}">${escapeHtml(name)}</option>`).join('')}</select></label><label id="accountNumberLabel">Nomor Rekening<input id="accountNumber" inputmode="numeric" placeholder="Nomor rekening / nomor HP" /></label><label>Nama Pemilik<input id="accountName" placeholder="Nama sesuai rekening / akun" /></label></div><button id="submitWithdraw" class="primary">Ajukan penarikan</button><p class="tiny">Pilih Bank atau Dompet Digital. Kode tujuan dikirim otomatis ke backend; kamu tidak perlu mengetik kode bank.</p></section>`
   if(state.view==='savings')return `<section class="panel saving-empty"><div class="save-icon">◈</div><h2>Tabungan</h2><p>Mesin target tabungan siap ditambahkan di atas wallet ledger FINORA.</p><button class="primary" data-action="topup">Mulai dari Top Up</button></section>`
   if(state.view==='security')return `<section class="panel"><div class="eyebrow">SECURITY CENTER</div><h2>Lapisan keamanan</h2><div class="security-grid"><div><strong>OAuth</strong><span>Aktif</span></div><div><strong>RLS</strong><span>Aktif</span></div><div><strong>Ledger</strong><span>Server-side</span></div><div><strong>Webhook</strong><span>Verified</span></div></div></section>`
   return `<section class="cards"><article class="wallet-card"><div class="card-top"><span>Available Balance</span><span class="chip">IDR</span></div><strong>${money(state.wallet?.available_balance||0)}</strong><div class="card-bottom"><span>Pending ${money(state.wallet?.pending_balance||0)}</span><span>FINORA WALLET</span></div></article><article class="stat"><span>Total transaksi</span><strong>${state.transactions.length}</strong><small>20 transaksi terbaru</small></article><article class="stat"><span>Status wallet</span><strong>Active</strong><small>RLS protected</small></article></section><section class="panel"><div class="panel-head"><div><div class="eyebrow">LEDGER</div><h2>Aktivitas terbaru</h2></div><button class="link" id="refreshWallet">Refresh</button></div>${renderTransactions()}</section>`
@@ -84,8 +92,37 @@ async function doTopup(){
   }catch(err){alert(err.message)}
 }
 
-async function doWithdraw(){const amount=Number(document.getElementById('withdrawAmount').value),bank_code=document.getElementById('bankCode').value.trim(),account_number=document.getElementById('accountNumber').value.trim(),account_name=document.getElementById('accountName').value.trim();if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi nominal, bank, nomor rekening, dan nama pemilik.');return}try{const data=await invokeFunction('create-withdrawal',{amount,bank_code,account_number,account_name});await loadWallet();state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id||'—')}</p><span class="hint">Penarikan menunggu payout provider.</span>`;render()}catch(err){alert(err.message)}}
+function syncDestinationFields(){
+  const type=document.getElementById('destinationType')?.value
+  const bankField=document.getElementById('bankField')
+  const ewalletField=document.getElementById('ewalletField')
+  const accountNumber=document.getElementById('accountNumber')
+  const accountNumberLabel=document.getElementById('accountNumberLabel')
+  if(!bankField||!ewalletField)return
+  const isEwallet=type==='ewallet'
+  bankField.style.display=isEwallet?'none':''
+  ewalletField.style.display=isEwallet?'':'none'
+  if(accountNumberLabel)accountNumberLabel.querySelector('label')
+  if(accountNumber)accountNumber.placeholder=isEwallet?'Nomor HP / nomor akun e-wallet':'Nomor rekening bank'
+  accountNumber.inputMode=isEwallet?'numeric':'numeric'
+}
 
+async function doWithdraw(){
+  const amount=Number(document.getElementById('withdrawAmount').value)
+  const type=document.getElementById('destinationType').value
+  const bank_code=type==='bank'?document.getElementById('bankCode').value.trim():document.getElementById('ewalletCode').value.trim()
+  const account_number=document.getElementById('accountNumber').value.trim()
+  const account_name=document.getElementById('accountName').value.trim()
+  if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi nominal, tujuan, nomor rekening/HP, dan nama pemilik.');return}
+  try{
+    const data=await invokeFunction('create-withdrawal',{amount,bank_code,account_number,account_name,destination_type:type})
+    await loadWallet()
+    state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id||'—')}</p><span class="hint">Tujuan: ${type==='ewallet'?'Dompet Digital':'Bank'}. Penarikan menunggu payout provider.</span>`
+    render()
+  }catch(err){alert(err.message)}
+}
+
+document.addEventListener('change',e=>{if(e.target?.id==='destinationType')syncDestinationFields()})
 document.addEventListener('click',async e=>{const btn=e.target.closest('button');if(!btn)return;if(btn.dataset.provider)return signIn(btn.dataset.provider);if(btn.id==='logout'){await supabase.auth.signOut();return}if(btn.id==='closeModal'){state.modal=null;render();return}if(btn.id==='refreshWallet'){state.error='';await loadWallet();render();return}if(btn.dataset.view){state.view=btn.dataset.view;state.error='';render();return}if(btn.dataset.action){state.view=btn.dataset.action;state.error='';render();return}if(btn.id==='submitTopup')return doTopup();if(btn.id==='submitWithdraw')return doWithdraw()})
 
 if(configured){supabase.auth.onAuthStateChange(async(_event,session)=>{state.user=session?.user||null;if(state.user)await loadWallet();else{state.wallet=null;state.transactions=[]}state.loading=false;render()});(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()}else{state.loading=false;render()}
