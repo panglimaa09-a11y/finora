@@ -1,0 +1,111 @@
+/* FINORA + DAPIN mobile layout — final override */
+@media (max-width: 768px) {
+  html, body { width:100%; max-width:100%; overflow-x:hidden; }
+  #app, .app-shell { width:100%; max-width:100%; min-width:0; }
+  .app-shell { display:block !important; min-height:100vh; }
+
+  /* FINORA outer navigation: never reserve desktop width on phones. */
+  .app-shell > .sidebar,
+  .app-shell .sidebar {
+    width:min(82vw,300px) !important;
+    max-width:300px !important;
+    transform:translateX(-105%) !important;
+    transition:transform .22s ease !important;
+    z-index:1001 !important;
+  }
+  .app-shell > .sidebar.open,
+  .app-shell .sidebar.open { transform:translateX(0) !important; }
+  .main-shell { margin-left:0 !important; width:100% !important; min-width:0 !important; }
+  .main-header { width:100% !important; padding:0 14px !important; }
+  .page { width:100% !important; max-width:none !important; margin:0 !important; padding:18px 12px 40px !important; box-sizing:border-box; }
+
+  /* DAPIN: replace the desktop two-column shell with a full-width mobile stack. */
+  .dapin-app {
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    min-height:0 !important;
+    border-radius:16px !important;
+    overflow:visible !important;
+  }
+  .dapin-sidebar {
+    position:relative !important;
+    inset:auto !important;
+    width:100% !important;
+    max-width:none !important;
+    height:auto !important;
+    min-height:0 !important;
+    padding:8px !important;
+    border-right:0 !important;
+    border-bottom:1px solid #1c2737 !important;
+    flex-direction:row !important;
+    align-items:center !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    scrollbar-width:none !important;
+  }
+  .dapin-sidebar::-webkit-scrollbar { display:none; }
+  .dapin-brand { flex:0 0 auto; padding:4px 8px !important; border-bottom:0 !important; }
+  .dapin-brand>span { width:30px !important; height:30px !important; }
+  .dapin-brand strong { font-size:10px !important; }
+  .dapin-brand small { font-size:7px !important; }
+  .dapin-menu { display:flex !important; flex:1 0 auto !important; gap:4px !important; padding:0 !important; }
+  .dapin-nav { flex:0 0 auto !important; width:auto !important; white-space:nowrap !important; padding:8px 10px !important; margin:0 !important; }
+  .dapin-nav b { width:auto !important; }
+  .dapin-nav span { font-size:10px !important; }
+  .dapin-side-foot { display:none !important; }
+
+  .dapin-main {
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+    padding:18px 12px 28px !important;
+  }
+  .dapin-page-head { align-items:flex-start !important; flex-direction:column !important; gap:12px !important; margin-bottom:16px !important; }
+  .dapin-page-head h1 { font-size:23px !important; }
+  .dapin-page-head p { font-size:11px !important; }
+  .dapin-page-head .dapin-primary,
+  .dapin-page-head .dapin-secondary { width:100% !important; }
+
+  .dapin-kpis,
+  .dapin-stat-grid,
+  .report-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:8px !important; }
+  .dapin-kpis article,
+  .dapin-stat { padding:13px !important; min-height:86px !important; }
+  .dapin-kpis strong,
+  .dapin-stat strong { font-size:18px !important; }
+
+  .dapin-columns,
+  .dapin-dashboard-grid { grid-template-columns:1fr !important; gap:10px !important; }
+  .dapin-action-grid,
+  .dapin-modules { grid-template-columns:1fr 1fr !important; gap:8px !important; }
+  .dapin-action-card { min-height:72px !important; padding:10px !important; }
+  .dapin-action-card>b { width:32px !important; height:32px !important; }
+
+  .dapin-deposit-grid,
+  .loan-pipeline,
+  .collection-board,
+  .ledger-summary { grid-template-columns:1fr 1fr !important; gap:8px !important; }
+  .dapin-panel { padding:14px !important; margin-top:10px !important; border-radius:14px !important; }
+  .dapin-panel-head h2 { font-size:16px !important; }
+
+  .dapin-toolbar { flex-direction:column !important; align-items:stretch !important; }
+  .dapin-toolbar input,
+  .dapin-search { width:100% !important; max-width:none !important; box-sizing:border-box !important; }
+  .dapin-table-wrap { width:100% !important; max-width:100% !important; overflow-x:auto !important; }
+  .dapin-table-wrap table { min-width:620px !important; }
+
+  .member-row { grid-template-columns:36px 1fr !important; }
+  .member-meta { grid-column:2 !important; text-align:left !important; }
+  .member-row .type-chip,
+  .member-row .tenor-chip { grid-column:2 !important; width:max-content; }
+
+  .report-sheet { padding:18px !important; }
+  .report-sheet-head { flex-direction:column !important; }
+  .ledger-head,.ledger-row { min-width:520px; }
+  .ledger-workspace { overflow-x:auto !important; }
+
+  .dapin-mobile-head { display:flex !important; }
+}
