@@ -7,6 +7,7 @@ const app = document.getElementById('app')
 
 const money = (n=0) => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
 const escapeHtml = (s='') => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
+const safeUrl = (url='') => { try { const u=new URL(url); return ['https:','http:'].includes(u.protocol)?u.toString():'' } catch { return '' } }
 
 let state = { user:null, wallet:null, transactions:[], view:'dashboard', modal:null, loading:true, error:'' }
 const configured = Boolean(supabaseUrl && supabaseAnonKey)
@@ -44,44 +45,18 @@ function renderView(){
 
 function renderTransactions(){
   if(!state.transactions.length)return `<div class="empty">Belum ada transaksi.</div>`
-  return `<div class="tx-list">${state.transactions.map(t=>{
-    const credit=['topup','transfer_in','refund','adjustment'].includes(t.type)
-    const label=t.description||t.type||'Transaksi'
-    return `<div class="tx"><div><strong>${escapeHtml(label)}</strong><small>${new Date(t.created_at).toLocaleString('id-ID')}</small></div><strong class="${credit?'credit':'debit'}">${credit?'+':'-'}${money(t.amount)}</strong></div>`
-  }).join('')}</div>`
+  return `<div class="tx-list">${state.transactions.map(t=>{const credit=['topup','transfer_in','refund','adjustment'].includes(t.type);const label=t.description||t.type||'Transaksi';return `<div class="tx"><div><strong>${escapeHtml(label)}</strong><small>${new Date(t.created_at).toLocaleString('id-ID')}</small></div><strong class="${credit?'credit':'debit'}">${credit?'+':'-'}${money(t.amount)}</strong></div>`}).join('')}</div>`
 }
 
 function renderModal(){return `<div class="modal-wrap"><div class="modal"><button class="close" id="closeModal">×</button>${state.modal}</div></div>`}
 
-async function signIn(provider){
-  state.error='';render()
-  const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}})
-  if(error){state.error=error.message;render()}
-}
+async function signIn(provider){state.error='';render();const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}});if(error){state.error=error.message;render()}}
 
 async function invokeFunction(name,body){
   const {data:{session}}=await supabase.auth.getSession()
   if(!session) throw new Error('Sesi login sudah berakhir. Silakan login kembali.')
-
   const {data,error}=await supabase.functions.invoke(name,{body,headers:{Authorization:`Bearer ${session.access_token}`}})
-
-  if(error){
-    let detail=error.message||'Permintaan ke Edge Function gagal.'
-    try{
-      const response=error.context
-      if(response&&typeof response.text==='function'){
-        const text=await response.text()
-        if(text){
-          try{
-            const parsed=JSON.parse(text)
-            detail=parsed.message||parsed.error||parsed.msg||text
-          }catch{detail=text}
-        }
-      }
-    }catch{}
-    throw new Error(`Edge Function "${name}" gagal: ${detail}`)
-  }
-
+  if(error){let detail=error.message||'Permintaan ke Edge Function gagal.';try{const response=error.context;if(response&&typeof response.text==='function'){const text=await response.text();if(text){try{const parsed=JSON.parse(text);detail=parsed.message||parsed.error||parsed.msg||text}catch{detail=text}}}}catch{}throw new Error(`Edge Function "${name}" gagal: ${detail}`)}
   if(data?.error) throw new Error(data.error)
   return data
 }
@@ -91,39 +66,14 @@ async function doTopup(){
   if(!Number.isFinite(amount)||amount<10000){alert('Minimum top up Rp10.000');return}
   try{
     const data=await invokeFunction('provider-create-topup',{amount,method})
-    state.modal=`<h2>Pembayaran dibuat</h2><p>Order ${escapeHtml(data.topup_id||'—')} sudah dibuat dengan status pending.</p><span class="hint">Pembayaran akan menambah saldo hanya setelah webhook provider terverifikasi.</span>`
+    const paymentUrl=safeUrl(data.payment_url)
+    state.modal=`<h2>Pembayaran dibuat</h2><p>Top Up ${money(amount)} sudah dibuat dengan status <strong>pending</strong>.</p>${paymentUrl?`<a class="primary" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noopener noreferrer">Lanjut ke pembayaran Midtrans</a>`:'<p class="hint">Instruksi pembayaran belum tersedia. Periksa konfigurasi payment provider.</p>'}<span class="hint">Saldo hanya bertambah setelah Midtrans mengirim notifikasi settlement yang lolos verifikasi signature.</span>`
     await loadWallet();render()
   }catch(err){alert(err.message)}
 }
 
-async function doWithdraw(){
-  const amount=Number(document.getElementById('withdrawAmount').value),bank_code=document.getElementById('bankCode').value.trim(),account_number=document.getElementById('accountNumber').value.trim(),account_name=document.getElementById('accountName').value.trim()
-  if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi data penarikan.');return}
-  try{
-    const data=await invokeFunction('create-withdrawal',{amount,bank_code,account_number,account_name})
-    await loadWallet()
-    state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id||'—')}</p><span class="hint">Penarikan menunggu payout provider.</span>`
-    render()
-  }catch(err){alert(err.message)}
-}
+async function doWithdraw(){const amount=Number(document.getElementById('withdrawAmount').value),bank_code=document.getElementById('bankCode').value.trim(),account_number=document.getElementById('accountNumber').value.trim(),account_name=document.getElementById('accountName').value.trim();if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi data penarikan.');return}try{const data=await invokeFunction('create-withdrawal',{amount,bank_code,account_number,account_name});await loadWallet();state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id||'—')}</p><span class="hint">Penarikan menunggu payout provider.</span>`;render()}catch(err){alert(err.message)}}
 
-document.addEventListener('click',async e=>{
-  const btn=e.target.closest('button');if(!btn)return
-  if(btn.dataset.provider)return signIn(btn.dataset.provider)
-  if(btn.id==='logout'){await supabase.auth.signOut();return}
-  if(btn.id==='closeModal'){state.modal=null;render();return}
-  if(btn.id==='refreshWallet'){state.error='';await loadWallet();render();return}
-  if(btn.dataset.view){state.view=btn.dataset.view;state.error='';render();return}
-  if(btn.dataset.action){state.view=btn.dataset.action;state.error='';render();return}
-  if(btn.id==='submitTopup')return doTopup()
-  if(btn.id==='submitWithdraw')return doWithdraw()
-})
+document.addEventListener('click',async e=>{const btn=e.target.closest('button');if(!btn)return;if(btn.dataset.provider)return signIn(btn.dataset.provider);if(btn.id==='logout'){await supabase.auth.signOut();return}if(btn.id==='closeModal'){state.modal=null;render();return}if(btn.id==='refreshWallet'){state.error='';await loadWallet();render();return}if(btn.dataset.view){state.view=btn.dataset.view;state.error='';render();return}if(btn.dataset.action){state.view=btn.dataset.action;state.error='';render();return}if(btn.id==='submitTopup')return doTopup();if(btn.id==='submitWithdraw')return doWithdraw()})
 
-if(configured){
-  supabase.auth.onAuthStateChange(async(_event,session)=>{
-    state.user=session?.user||null
-    if(state.user)await loadWallet();else{state.wallet=null;state.transactions=[]}
-    state.loading=false;render()
-  })
-  ;(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()
-}else{state.loading=false;render()}
+if(configured){supabase.auth.onAuthStateChange(async(_event,session)=>{state.user=session?.user||null;if(state.user)await loadWallet();else{state.wallet=null;state.transactions=[]}state.loading=false;render()});(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()}else{state.loading=false;render()}
