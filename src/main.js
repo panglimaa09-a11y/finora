@@ -1,16 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
 const app = document.getElementById('app')
 
 const money = (n=0) => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
+const escapeHtml = (s='') => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 
 let state = { user:null, wallet:null, transactions:[], view:'dashboard', modal:null, loading:true, error:'' }
 
+// Never let a missing environment variable crash the whole app into a blank screen.
+const configured = Boolean(supabaseUrl && supabaseAnonKey)
+export const supabase = configured ? createClient(supabaseUrl, supabaseAnonKey) : null
+
+function renderSetup(){
+  app.innerHTML=`<main class="auth"><section class="auth-card"><div class="brand">FINORA</div><div class="eyebrow">SETUP REQUIRED</div><h1>FINORA sudah terhubung ke GitHub.</h1><p class="muted">Frontend berhasil dimuat. Supabase belum dikonfigurasi di environment aplikasi.</p><div class="notice"><strong>Tambahkan Environment Variables:</strong><br><code>VITE_SUPABASE_URL</code><br><code>VITE_SUPABASE_ANON_KEY</code></div><p class="tiny">Setelah variable ditambahkan di Vercel, lakukan redeploy. Jangan masukkan service_role key ke frontend atau GitHub.</p></section><section class="auth-art"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="art-copy"><span>FINORA • WALLET</span><h2>Frontend aktif. Backend siap disambungkan.</h2></div></section></main>`
+}
+
 async function loadWallet(){
-  if(!state.user) return
+  if(!state.user || !supabase) return
   const {data,error}=await supabase.from('wallets').select('*').eq('user_id',state.user.id).single()
   if(error && error.code!=='PGRST116') state.error=error.message
   state.wallet=data||null
@@ -19,6 +27,7 @@ async function loadWallet(){
 }
 
 function render(){
+  if(!configured){renderSetup();return}
   if(state.loading){app.innerHTML='<div class="loading">Memuat FINORA…</div>';return}
   if(!state.user){renderAuth();return}
   renderApp()
@@ -46,34 +55,24 @@ function renderTransactions(){
  if(!state.transactions.length) return `<div class="empty">Belum ada transaksi.</div>`
  return `<div class="tx-list">${state.transactions.map(t=>`<div class="tx"><div><strong>${escapeHtml(t.description||t.entry_type)}</strong><small>${new Date(t.created_at).toLocaleString('id-ID')}</small></div><strong class="${t.direction==='credit'?'credit':'debit'}">${t.direction==='credit'?'+':'-'}${money(t.amount)}</strong></div>`).join('')}</div>`
 }
-
 function renderModal(){return `<div class="modal-wrap"><div class="modal"><button class="close" id="closeModal">×</button>${state.modal}</div></div>`}
 
-function escapeHtml(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-
 async function signIn(provider){
- state.error='';render();
+ state.error='';render()
  const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}})
  if(error){state.error=error.message;render()}
 }
-
 async function doTopup(){
- const amount=Number(document.getElementById('topupAmount').value)
- const method=document.getElementById('topupMethod').value
+ const amount=Number(document.getElementById('topupAmount').value), method=document.getElementById('topupMethod').value
  if(!Number.isFinite(amount)||amount<10000){alert('Minimum top up Rp10.000');return}
  const {data:{session}}=await supabase.auth.getSession()
  const {data,error}=await supabase.functions.invoke('provider-create-topup',{body:{amount,method},headers:{Authorization:`Bearer ${session?.access_token||''}`}})
  if(error){alert(error.message);return}
  if(data?.error){alert(data.error);return}
- state.modal=`<h2>Pembayaran dibuat</h2><p>Order ${escapeHtml(data.topup_id)} sudah dibuat dengan status pending.</p><span class="hint">Hubungkan adapter provider produksi untuk mengembalikan QRIS/VA/payment URL.</span>`
- render()
+ state.modal=`<h2>Pembayaran dibuat</h2><p>Order ${escapeHtml(data.topup_id)} sudah dibuat dengan status pending.</p><span class="hint">Hubungkan adapter provider produksi untuk mengembalikan QRIS/VA/payment URL.</span>`;render()
 }
-
 async function doWithdraw(){
- const amount=Number(document.getElementById('withdrawAmount').value)
- const bank_code=document.getElementById('bankCode').value.trim()
- const account_number=document.getElementById('accountNumber').value.trim()
- const account_name=document.getElementById('accountName').value.trim()
+ const amount=Number(document.getElementById('withdrawAmount').value), bank_code=document.getElementById('bankCode').value.trim(), account_number=document.getElementById('accountNumber').value.trim(), account_name=document.getElementById('accountName').value.trim()
  if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi data penarikan.');return}
  const {data:{session}}=await supabase.auth.getSession()
  const {data,error}=await supabase.functions.invoke('create-withdrawal',{body:{amount,bank_code,account_number,account_name},headers:{Authorization:`Bearer ${session?.access_token||''}`}})
@@ -81,17 +80,9 @@ async function doWithdraw(){
  await loadWallet();state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id)}</p><span class="hint">Dana sudah di-reserve dan menunggu payout provider.</span>`;render()
 }
 
-document.addEventListener('click',async e=>{
- const btn=e.target.closest('button'); if(!btn) return
- if(btn.dataset.provider) return signIn(btn.dataset.provider)
- if(btn.id==='logout'){await supabase.auth.signOut();return}
- if(btn.id==='closeModal'){state.modal=null;render();return}
- if(btn.dataset.view){state.view=btn.dataset.view;render();return}
- if(btn.dataset.action){state.view=btn.dataset.action;render();return}
- if(btn.id==='submitTopup') return doTopup()
- if(btn.id==='submitWithdraw') return doWithdraw()
-})
+document.addEventListener('click',async e=>{const btn=e.target.closest('button');if(!btn)return;if(btn.dataset.provider)return signIn(btn.dataset.provider);if(btn.id==='logout'){await supabase.auth.signOut();return}if(btn.id==='closeModal'){state.modal=null;render();return}if(btn.dataset.view){state.view=btn.dataset.view;render();return}if(btn.dataset.action){state.view=btn.dataset.action;render();return}if(btn.id==='submitTopup')return doTopup();if(btn.id==='submitWithdraw')return doWithdraw()})
 
-supabase.auth.onAuthStateChange(async (_event,session)=>{state.user=session?.user||null;if(state.user){await loadWallet()}else{state.wallet=null;state.transactions=[]}state.loading=false;render()})
-
-;(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()
+if(configured){
+ supabase.auth.onAuthStateChange(async (_event,session)=>{state.user=session?.user||null;if(state.user)await loadWallet();else{state.wallet=null;state.transactions=[]}state.loading=false;render()})
+ ;(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()
+}else{state.loading=false;render()}
