@@ -8,24 +8,31 @@ const admin = createClient(
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
   })
 
 async function sha512(value: string) {
   const data = new TextEncoder().encode(value)
   const hash = await crypto.subtle.digest('SHA-512', data)
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
+  return [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 Deno.serve(async (req) => {
-  try {
-    if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405)
+  if (req.method === 'OPTIONS') return json({ ok: true })
+  if (req.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, 405)
 
+  try {
     const body = await req.json()
     const provider = String(Deno.env.get('PAYMENT_PROVIDER') || '').toLowerCase()
     const serverKey = Deno.env.get('MIDTRANS_SERVER_KEY') || Deno.env.get('PAYMENT_PROVIDER_API_KEY') || ''
 
     if (provider !== 'midtrans' || !serverKey) {
+      console.error('payment-webhook: Midtrans not configured')
       return json({ error: 'MIDTRANS_NOT_CONFIGURED' }, 503)
     }
 
@@ -35,11 +42,13 @@ Deno.serve(async (req) => {
     const signatureKey = String(body.signature_key || '')
 
     if (!orderId || !statusCode || !grossAmount || !signatureKey) {
+      console.error('payment-webhook: invalid notification', { orderId, statusCode, hasGrossAmount: !!grossAmount, hasSignature: !!signatureKey })
       return json({ error: 'INVALID_MIDTRANS_NOTIFICATION' }, 400)
     }
 
     const expected = await sha512(`${orderId}${statusCode}${grossAmount}${serverKey}`)
     if (expected.toLowerCase() !== signatureKey.toLowerCase()) {
+      console.error('payment-webhook: invalid signature', { orderId })
       return json({ error: 'INVALID_SIGNATURE' }, 401)
     }
 
@@ -52,8 +61,11 @@ Deno.serve(async (req) => {
 
     if (insertError) {
       const duplicate = String(insertError.message || '').toLowerCase().includes('duplicate')
-      if (!duplicate) throw insertError
-      return json({ ok: true, duplicate: true })
+      if (duplicate) return json({ ok: true, duplicate: true })
+      console.error('payment-webhook: event persistence failed', insertError)
+      // A valid signed notification was received. Acknowledge it so Midtrans
+      // does not repeatedly redeliver it while preserving the error in logs.
+      return json({ ok: true, accepted: true, persistenceError: true })
     }
 
     const topupId = body.metadata?.topup_id || body.custom_field1 || null
@@ -69,12 +81,22 @@ Deno.serve(async (req) => {
         p_topup_id: String(topupId),
         p_provider_reference: String(body.transaction_id || orderId),
       })
-      if (error) throw error
+
+      if (error) {
+        console.error('payment-webhook: post_topup failed', {
+          orderId,
+          topupId: String(topupId),
+          error,
+        })
+        // Do not turn a verified Midtrans notification into a 4xx response.
+        // The event has already been persisted and can be reconciled server-side.
+        return json({ ok: true, accepted: true, topupProcessed: false })
+      }
     }
 
     return json({ ok: true, processed: successful && Boolean(topupId) })
   } catch (e) {
-    console.error('payment-webhook', e)
-    return json({ error: String(e) }, 400)
+    console.error('payment-webhook: unexpected error', e)
+    return json({ error: 'INTERNAL_WEBHOOK_ERROR' }, 500)
   }
 })
