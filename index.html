@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/src/dapin-mobile.css?v=297dafa8" />
     <link rel="stylesheet" href="/src/mobile-layout-fix.css?v=20260826-04" />
     <link rel="stylesheet" href="/src/mobile-fix.css?v=20260826-05" />
+    <link rel="stylesheet" href="/src/phone-responsive.css?v=20260826-06" />
   </head>
   <body>
     <div id="app"></div>
@@ -19,6 +20,7 @@
     <script type="module" src="/src/withdraw-enhancer.js"></script>
     <script type="module" src="/src/dapin-graphs.js?v=20260826-03"></script>
     <script type="module" src="/src/admin-center.js?v=20260826-01"></script>
+    <script type="module" src="/src/dapin-mobile.js?v=20260826-06"></script>
     <script>
       (() => {
         const init = () => {
@@ -27,15 +29,7 @@
           if (shell && sidebar && !sidebar.dataset.mobileBound) {
             sidebar.dataset.mobileBound = '1';
             const toggle = shell.querySelector('[data-dapin-toggle]');
-            const close = () => { sidebar.classList.remove('is-open'); shell.classList.remove('sidebar-open', 'dapin-menu-open'); };
-            if (toggle) toggle.addEventListener('click', (e) => {
-              e.preventDefault();
-              const open = !sidebar.classList.contains('is-open');
-              sidebar.classList.toggle('is-open', open);
-              shell.classList.toggle('sidebar-open', open);
-              shell.classList.toggle('dapin-menu-open', open);
-            });
-            sidebar.addEventListener('click', e => { if (e.target.closest('.dapin-nav')) setTimeout(close, 80); });
+            if (toggle) toggle.setAttribute('type', 'button');
           }
         };
         const observer = new MutationObserver(init);
