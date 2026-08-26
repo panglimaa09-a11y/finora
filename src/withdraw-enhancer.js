@@ -26,6 +26,7 @@ const esc = (s = '') => String(s).replace(/[&<>'"]/g, (c) => ({
 }[c]))
 
 let lastEnhanced = null
+let walletSnapshot = null
 
 function getPageRoot() {
   return document.querySelector('#app .page')
@@ -36,18 +37,36 @@ function isWithdrawPage(root) {
   return h1?.textContent?.trim() === 'Tarik Dana'
 }
 
-function getCurrentBalance() {
-  const text = document.querySelector('.wallet-hero strong')?.textContent || '0'
-  const digits = text.replace(/[^0-9-]/g, '')
-  return Number(digits || 0)
+async function loadWallet() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesi login tidak tersedia.')
+
+  const { data, error } = await supabase
+    .from('wallets')
+    .select('id,available_balance,pending_balance,status')
+    .eq('user_id', session.user.id)
+    .single()
+
+  if (error) throw error
+  walletSnapshot = data
+  return data
 }
 
-function renderWithdraw() {
+async function renderWithdraw() {
   const root = getPageRoot()
   if (!root || !isWithdrawPage(root) || lastEnhanced === root) return
   lastEnhanced = root
 
-  const balanceText = document.querySelector('.wallet-hero strong')?.textContent || 'Rp0'
+  let wallet
+  try {
+    wallet = await loadWallet()
+  } catch (error) {
+    console.error('withdraw-enhancer wallet load failed', error)
+    wallet = { available_balance: 0, pending_balance: 0, status: 'unknown' }
+  }
+
+  const balanceText = money(wallet.available_balance)
+
   root.innerHTML = `
     <div class="page-head">
       <div>
@@ -57,7 +76,7 @@ function renderWithdraw() {
       </div>
       <div class="withdraw-balance-badge">
         <span>Saldo tersedia</span>
-        <strong>${esc(balanceText)}</strong>
+        <strong id="wd-available">${esc(balanceText)}</strong>
       </div>
     </div>
 
@@ -84,7 +103,7 @@ function renderWithdraw() {
 
       <div class="form-grid">
         <label>Nominal penarikan
-          <input id="wd-amount" type="number" min="10000" step="1000" placeholder="100000">
+          <input id="wd-amount" type="number" min="10000" step="1000" placeholder="10000">
           <small class="field-help">Minimum Rp10.000</small>
         </label>
         <label id="wd-bank-wrap">Pilih Bank
@@ -108,7 +127,7 @@ function renderWithdraw() {
       </div>
 
       <div class="withdraw-summary" id="wd-summary">
-        <div><span>Saldo tersedia</span><strong>${esc(balanceText)}</strong></div>
+        <div><span>Saldo tersedia</span><strong id="wd-summary-before">${esc(balanceText)}</strong></div>
         <div><span>Nominal ditarik</span><strong id="wd-summary-amount">Rp0</strong></div>
         <div class="total"><span>Saldo setelah pengajuan</span><strong id="wd-summary-after">${esc(balanceText)}</strong></div>
       </div>
@@ -119,25 +138,27 @@ function renderWithdraw() {
     </section>
   `
 
-  const style = document.createElement('style')
-  style.id = 'withdraw-enhancer-style'
-  style.textContent = `
-    .withdraw-balance-badge{display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding:14px 18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.04)}
-    .withdraw-balance-badge span{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:.08em}.withdraw-balance-badge strong{font-size:20px}
-    .withdraw-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:22px 0}
-    .withdraw-type{display:flex;align-items:center;gap:12px;padding:15px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.03);color:inherit;text-align:left;cursor:pointer}
-    .withdraw-type.active{border-color:rgba(99,102,241,.7);box-shadow:0 0 0 1px rgba(99,102,241,.25) inset;background:rgba(99,102,241,.08)}
-    .withdraw-type-icon{font-size:24px}.withdraw-type strong,.withdraw-type small{display:block}.withdraw-type small{opacity:.6;margin-top:3px}
-    .field-help{display:block;margin-top:6px;font-size:12px;opacity:.6}.withdraw-summary{margin:22px 0;padding:16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
-    .withdraw-summary div{display:flex;justify-content:space-between;padding:9px 0}.withdraw-summary .total{border-top:1px solid rgba(255,255,255,.08);margin-top:6px;padding-top:14px}.withdraw-summary .total strong{font-size:18px}
-    @media(max-width:720px){.withdraw-type-grid{grid-template-columns:1fr}.withdraw-balance-badge{align-items:flex-start}.page-head{gap:14px;flex-direction:column}.withdraw-balance-badge{width:100%}}
-  `
-  document.head.appendChild(style)
+  if (!document.getElementById('withdraw-enhancer-style')) {
+    const style = document.createElement('style')
+    style.id = 'withdraw-enhancer-style'
+    style.textContent = `
+      .withdraw-balance-badge{display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding:14px 18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.04)}
+      .withdraw-balance-badge span{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:.08em}.withdraw-balance-badge strong{font-size:20px}
+      .withdraw-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:22px 0}
+      .withdraw-type{display:flex;align-items:center;gap:12px;padding:15px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.03);color:inherit;text-align:left;cursor:pointer}
+      .withdraw-type.active{border-color:rgba(99,102,241,.7);box-shadow:0 0 0 1px rgba(99,102,241,.25) inset;background:rgba(99,102,241,.08)}
+      .withdraw-type-icon{font-size:24px}.withdraw-type strong,.withdraw-type small{display:block}.withdraw-type small{opacity:.6;margin-top:3px}
+      .field-help{display:block;margin-top:6px;font-size:12px;opacity:.6}.withdraw-summary{margin:22px 0;padding:16px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+      .withdraw-summary div{display:flex;justify-content:space-between;padding:9px 0}.withdraw-summary .total{border-top:1px solid rgba(255,255,255,.08);margin-top:6px;padding-top:14px}.withdraw-summary .total strong{font-size:18px}
+      @media(max-width:720px){.withdraw-type-grid{grid-template-columns:1fr}.withdraw-balance-badge{align-items:flex-start}.page-head{gap:14px;flex-direction:column}.withdraw-balance-badge{width:100%}}
+    `
+    document.head.appendChild(style)
+  }
 
-  bindWithdraw()
+  bindWithdraw(wallet)
 }
 
-function bindWithdraw() {
+function bindWithdraw(initialWallet) {
   let destination = 'bank'
   const amount = document.querySelector('#wd-amount')
   const bankWrap = document.querySelector('#wd-bank-wrap')
@@ -145,13 +166,14 @@ function bindWithdraw() {
   const account = document.querySelector('#wd-account')
   const submit = document.querySelector('#wd-submit')
   const status = document.querySelector('#wd-status')
+  const summaryBefore = document.querySelector('#wd-summary-before')
   const summaryAmount = document.querySelector('#wd-summary-amount')
   const summaryAfter = document.querySelector('#wd-summary-after')
 
-  const balance = getCurrentBalance()
-
   const updateSummary = () => {
     const value = Number(amount?.value || 0)
+    const balance = Number(walletSnapshot?.available_balance || initialWallet?.available_balance || 0)
+    if (summaryBefore) summaryBefore.textContent = money(balance)
     if (summaryAmount) summaryAmount.textContent = money(value)
     if (summaryAfter) summaryAfter.textContent = money(Math.max(balance - value, 0))
   }
@@ -177,12 +199,12 @@ function bindWithdraw() {
     const accountNumber = String(account?.value || '').trim()
     const accountName = String(document.querySelector('#wd-name')?.value || '').trim()
 
-    if (!Number.isFinite(value) || value < 10000) {
+    if (!Number.isInteger(value) || value < 10000) {
       status.textContent = 'Minimum penarikan Rp10.000.'
       return
     }
-    if (value > balance) {
-      status.textContent = 'Saldo tidak mencukupi untuk penarikan ini.'
+    if (value > Number(walletSnapshot?.available_balance || 0)) {
+      status.textContent = `Saldo tidak mencukupi. Saldo tersedia ${money(walletSnapshot?.available_balance || 0)}.`
       return
     }
     if (!bankCode || !accountNumber || !accountName) {
@@ -209,11 +231,14 @@ function bindWithdraw() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
 
-      if (error) throw error
+      if (error) throw new Error(error.message || 'Edge Function create-withdrawal gagal.')
       if (data?.error) throw new Error(data.error)
 
+      walletSnapshot = await loadWallet()
+      document.getElementById('wd-available').textContent = money(walletSnapshot.available_balance)
       status.innerHTML = `✓ Penarikan dibuat. ID transaksi: <strong>${esc(data?.withdrawal_id || '—')}</strong>. Status awal: <strong>Pending</strong>.`
       submit.textContent = 'Pengajuan terkirim'
+      updateSummary()
     } catch (error) {
       status.textContent = error?.message || 'Penarikan gagal dibuat.'
       submit.disabled = false
@@ -224,5 +249,4 @@ function bindWithdraw() {
 
 const observer = new MutationObserver(() => renderWithdraw())
 observer.observe(document.body, { childList: true, subtree: true })
-
 renderWithdraw()
