@@ -1,0 +1,13 @@
+{
+  "name": "finora-android",
+  "private": true,
+  "scripts": {
+    "build": "npx cap sync android",
+    "open": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest",
+    "@capacitor/cli": "latest"
+  }
+}
