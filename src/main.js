@@ -1,27 +1,97 @@
-import { createClient } from '@supabase/supabase-js';
-import './style.css';
+import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-const supabase=createClient(import.meta.env.VITE_SUPABASE_URL||'',import.meta.env.VITE_SUPABASE_ANON_KEY||'');
-const app=document.querySelector('#app');
-let session=null,wallet=null,entries=[],topups=[],withdrawals=[];
-const fmt=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-const userName=()=>session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Pengguna';
-const money=n=>Number(n||0).toLocaleString('id-ID');
+const app = document.getElementById('app')
 
-function login(){app.innerHTML=`<main class="auth"><section class="auth-card"><div class="brand"><div class="logo">F</div><div><b>FINORA</b><small>Real Wallet Platform</small></div></div><div class="hero-copy"><span class="pill">PRODUCTION WALLET CORE</span><h1>Keuanganmu.<br><em>Lebih terkontrol.</em></h1><p>Wallet, tabungan, top up, penarikan dan ledger dalam satu pengalaman yang dirancang untuk mobile hingga desktop.</p></div><div class="providers"><button data-p="google" class="oauth google"><b>G</b> Lanjut dengan Google</button><button data-p="facebook" class="oauth facebook"><b>f</b> Lanjut dengan Facebook</button><button data-p="apple" class="oauth apple"><b>●</b> Lanjut dengan Apple</button></div><p class="secure">🔒 Supabase Auth · RLS · Server-side wallet operations</p></section><aside class="auth-art"><div class="orb o1"></div><div class="orb o2"></div><div class="wallet-mock"><span>FINORA WALLET</span><strong>${fmt(2500000)}</strong><small>Production architecture</small><div class="mock-line"></div><div class="mock-row"><span>SECURE LEDGER</span><span>ACTIVE</span></div></div></aside></main>`;document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>oauth(b.dataset.p));}
-async function oauth(provider){if(!import.meta.env.VITE_SUPABASE_URL||!import.meta.env.VITE_SUPABASE_ANON_KEY){alert('Isi VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY terlebih dahulu.');return;}const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:location.origin}});if(error)alert(error.message);}
-async function load(){const [w,e,t,wd]=await Promise.all([supabase.from('wallets').select('*').single(),supabase.from('ledger_entries').select('*').order('created_at',{ascending:false}).limit(50),supabase.from('topups').select('*').order('created_at',{ascending:false}).limit(20),supabase.from('withdrawals').select('*').order('created_at',{ascending:false}).limit(20)]);wallet=w.data;entries=e.data||[];topups=t.data||[];withdrawals=wd.data||[];}
-function nav(){return `<nav class="nav"><button class="navitem active" data-view="home">Overview</button><button class="navitem" data-view="transactions">Transaksi</button><button class="navitem" data-view="savings">Tabungan</button><button class="navitem" data-view="security">Security</button></nav>`}
-function dashboard(view='home'){const balance=Number(wallet?.available_balance||0),pending=Number(wallet?.pending_balance||0);app.innerHTML=`<div class="shell"><header><div class="brand"><div class="logo">F</div><div><b>FINORA</b><small>Real Wallet Platform</small></div></div><div class="head-actions"><span class="verified">● Wallet secure</span><button id="logout" class="ghost">Keluar</button></div></header><main class="content">${nav()}<div class="welcome"><div><span class="muted">Dompet saya</span><h1>Halo, ${esc(userName())} 👋</h1><p>Kelola uang, tabungan, dan transaksi dari satu dashboard.</p></div><div class="quick"><button id="topup" class="primary">＋ Isi Saldo</button><button id="withdraw" class="secondary">Tarik Dana</button></div></div><section class="wallet-card"><div><span>Saldo tersedia</span><strong>${fmt(balance)}</strong><small>Wallet ID · ${esc(wallet?.wallet_code||'—')}</small></div><div class="wallet-chip">FINORA<br>WALLET</div></section><section class="cards"><div class="card"><span>Saldo tersedia</span><strong>${fmt(balance)}</strong><small>Siap digunakan</small></div><div class="card"><span>Pending</span><strong>${fmt(pending)}</strong><small>Menunggu settlement</small></div><div class="card"><span>Total aktivitas</span><strong>${entries.length}</strong><small>Ledger terbaru</small></div></section>${view==='home'?homeView():view==='transactions'?transactionsView():view==='savings'?savingsView():securityView()}<div class="notice">⚠️ Top up hanya mengkredit saldo setelah konfirmasi provider yang tervalidasi. FINORA tidak mengubah saldo berdasarkan input browser.</div></main></div>`;wire();}
-function homeView(){return `<section class="panel"><div class="panel-head"><div><h2>Aktivitas terbaru</h2><p>Double-entry ledger</p></div><button class="link" data-view="transactions">Lihat semua</button></div><div>${entries.slice(0,8).map(tx).join('')||'<div class="empty">Belum ada aktivitas wallet.</div>'}</div></section>`}
-function transactionsView(){return `<section class="panel"><div class="panel-head"><div><h2>Transaksi</h2><p>Semua aktivitas wallet</p></div></div><div>${entries.map(tx).join('')||'<div class="empty">Belum ada transaksi.</div>'}</div></section><section class="panel"><div class="panel-head"><div><h2>Top up</h2><p>Status order pembayaran</p></div></div>${topups.map(t=>`<div class="tx"><div class="tx-icon credit">↑</div><div class="tx-main"><b>${fmt(t.amount)} · ${esc(t.method)}</b><span>${esc(t.status)} · ${new Date(t.created_at).toLocaleString('id-ID')}</span></div><strong>${esc(t.provider||'provider')}</strong></div>`).join('')||'<div class="empty">Belum ada top up.</div>'}</section>`}
-function savingsView(){return `<section class="panel savings"><div class="panel-head"><div><h2>Tabungan</h2><p>Target tabungan akan terhubung ke wallet melalui internal ledger.</p></div><button class="secondary" onclick="alert('Modul target tabungan siap dikembangkan di V3.4.')">＋ Target</button></div><div class="saving-empty"><div class="save-icon">◎</div><h3>Buat target pertama</h3><p>Contoh: Motor, Laptop, Dana Darurat, Liburan.</p></div></section>`}
-function securityView(){return `<section class="panel"><div class="panel-head"><div><h2>Security Center</h2><p>Kontrol keamanan wallet</p></div></div><div class="security-grid"><div><b>RLS</b><span>Aktif</span></div><div><b>Ledger</b><span>Server-side</span></div><div><b>Webhook</b><span>Signature required</span></div><div><b>Idempotency</b><span>Enabled</span></div></div></section>`}
-function tx(x){return `<div class="tx"><div class="tx-icon ${x.direction}">${x.direction==='credit'?'↑':'↓'}</div><div class="tx-main"><b>${esc(x.description||x.entry_type)}</b><span>${esc(x.status)} · ${new Date(x.created_at).toLocaleString('id-ID')}</span></div><strong class="${x.direction}">${x.direction==='credit'?'+':'−'} ${fmt(x.amount)}</strong></div>`}
-function wire(){document.querySelector('#logout').onclick=async()=>supabase.auth.signOut();document.querySelector('#topup').onclick=topupModal;document.querySelector('#withdraw').onclick=withdrawModal;document.querySelectorAll('.navitem,[data-view="transactions"]').forEach(b=>b.onclick=()=>dashboard(b.dataset.view));}
-function overlay(html){const d=document.createElement('div');d.className='modal-wrap';d.innerHTML=html;document.body.append(d);d.querySelector('.close').onclick=()=>d.remove();return d;}
-function topupModal(){const d=overlay(`<div class="modal"><button class="close">×</button><h2>Isi Saldo</h2><p>Order pembayaran akan dibuat. Saldo tidak masuk sampai provider mengirim webhook yang tervalidasi.</p><form id="f"><label>Nominal<input name="amount" type="number" min="10000" step="1000" required placeholder="100000"></label><label>Metode<select name="method"><option value="qris">QRIS</option><option value="va">Virtual Account</option><option value="bank_transfer">Bank Transfer</option></select></label><button class="primary full">Buat Order</button></form><small class="hint">Provider production harus dikonfigurasi di Edge Function secrets.</small></div>`);d.querySelector('#f').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const {data,error}=await supabase.functions.invoke('provider-create-topup',{body:{amount:Number(f.get('amount')),method:f.get('method')}});if(error||data?.error){alert(data?.error||error?.message||'Gagal membuat order');return;}alert(`Order ${data.reference||data.topup_id} dibuat. Provider akan mengembalikan instruksi pembayaran setelah adapter dikonfigurasi.`);d.remove();await load();dashboard('transactions');};}
-function withdrawModal(){const d=overlay(`<div class="modal"><button class="close">×</button><h2>Tarik Dana</h2><p>Penarikan akan mengurangi available balance secara atomik dan masuk pending sampai payout selesai.</p><form id="f"><label>Nominal<input name="amount" type="number" min="10000" step="1000" required placeholder="100000"></label><label>Bank Code<input name="bank_code" required placeholder="BCA"></label><label>Nomor Rekening<input name="account" required inputmode="numeric"></label><label>Nama Pemilik Rekening<input name="name" required></label><button class="secondary full">Ajukan Penarikan</button></form></div>`);d.querySelector('#f').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const {data,error}=await supabase.functions.invoke('create-withdrawal',{body:{amount:Number(f.get('amount')),bank_code:f.get('bank_code'),account_number:f.get('account'),account_name:f.get('name')}});if(error||data?.error){alert(data?.error||error?.message||'Gagal');return;}alert('Penarikan dibuat dan menunggu payout provider.');d.remove();await load();dashboard('transactions');};}
-async function start(){if(!import.meta.env.VITE_SUPABASE_URL||!import.meta.env.VITE_SUPABASE_ANON_KEY){login();return;}const {data}=await supabase.auth.getSession();session=data.session;if(!session){login();return;}await load();dashboard();}
-supabase.auth.onAuthStateChange((_e,s)=>{session=s;if(s)load().then(()=>dashboard());else login();});start();
+const money = (n=0) => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
+
+let state = { user:null, wallet:null, transactions:[], view:'dashboard', modal:null, loading:true, error:'' }
+
+async function loadWallet(){
+  if(!state.user) return
+  const {data,error}=await supabase.from('wallets').select('*').eq('user_id',state.user.id).single()
+  if(error && error.code!=='PGRST116') state.error=error.message
+  state.wallet=data||null
+  const {data:ledger}=await supabase.from('ledger_entries').select('*').eq('user_id',state.user.id).order('created_at',{ascending:false}).limit(20)
+  state.transactions=ledger||[]
+}
+
+function render(){
+  if(state.loading){app.innerHTML='<div class="loading">Memuat FINORA…</div>';return}
+  if(!state.user){renderAuth();return}
+  renderApp()
+}
+
+function renderAuth(){
+  app.innerHTML=`<main class="auth"><section class="auth-card"><div class="brand">FINORA</div><div class="eyebrow">DIGITAL WALLET</div><h1>Keuanganmu, lebih terarah.</h1><p class="muted">Masuk untuk mengakses wallet, tabungan, transfer, dan riwayat transaksi.</p><div class="oauths"><button data-provider="google">Continue with Google</button><button data-provider="facebook">Continue with Facebook</button><button data-provider="apple">Continue with Apple</button></div><p class="tiny">Provider OAuth diaktifkan melalui Supabase Auth.</p>${state.error?`<div class="notice">${escapeHtml(state.error)}</div>`:''}</section><section class="auth-art"><div class="orb orb-a"></div><div class="orb orb-b"></div><div class="art-copy"><span>SAFE • SMART • SIMPLE</span><h2>Wallet core siap dikembangkan ke payment provider produksi.</h2></div></section></main>`
+}
+
+function renderApp(){
+ const w=state.wallet||{available_balance:0,pending_balance:0,wallet_code:'FN-—'}
+ const nav=[['dashboard','Dashboard'],['topup','Top Up'],['withdraw','Tarik Dana'],['savings','Tabungan'],['security','Security']]
+ app.innerHTML=`<div class="shell"><header class="topbar"><div class="brand">FINORA</div><div class="head-actions"><span class="verified">● Wallet Active</span><button id="logout" class="ghost">Keluar</button></div></header><main class="content"><div class="welcome"><div><div class="eyebrow">FINORA ID</div><h1>Halo, ${escapeHtml(state.user.user_metadata?.full_name||state.user.email?.split('@')[0]||'Pengguna')}</h1><p class="muted">${escapeHtml(w.wallet_code||'')}</p></div><div class="quick"><button data-action="topup">＋ Top Up</button><button data-action="withdraw">↗ Tarik Dana</button></div></div><nav class="nav">${nav.map(([id,label])=>`<button class="navitem ${state.view===id?'active':''}" data-view="${id}">${label}</button>`).join('')}</nav>${renderView()}</main></div>${state.modal?renderModal():''}`
+}
+
+function renderView(){
+ if(state.view==='topup') return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">WALLET</div><h2>Isi saldo</h2></div><span class="pill">Fail-closed</span></div><div class="form-grid"><label>Nominal<input id="topupAmount" inputmode="numeric" placeholder="100000" /></label><label>Metode<select id="topupMethod"><option value="qris">QRIS</option><option value="va">Virtual Account</option><option value="bank_transfer">Bank Transfer</option></select></label></div><button id="submitTopup" class="primary">Buat pembayaran</button><p class="tiny">Saldo hanya bertambah setelah provider mengonfirmasi pembayaran melalui webhook server yang terverifikasi.</p></section>`
+ if(state.view==='withdraw') return `<section class="panel"><div class="panel-head"><div><div class="eyebrow">PAYOUT</div><h2>Tarik dana</h2></div><span class="pill">${money(state.wallet?.available_balance||0)} tersedia</span></div><div class="form-grid"><label>Nominal<input id="withdrawAmount" inputmode="numeric" placeholder="100000" /></label><label>Kode Bank<input id="bankCode" placeholder="BCA" /></label><label>Nomor Rekening<input id="accountNumber" inputmode="numeric" /></label><label>Nama Pemilik<input id="accountName" /></label></div><button id="submitWithdraw" class="primary">Ajukan penarikan</button><p class="tiny">Saldo akan di-reserve terlebih dahulu. Payout ke bank dilakukan oleh provider yang terhubung.</p></section>`
+ if(state.view==='savings') return `<section class="panel saving-empty"><div class="save-icon">◈</div><h2>Tabungan</h2><p>Mesin target tabungan siap ditambahkan di atas wallet ledger FINORA.</p><button class="primary" data-action="topup">Mulai dari Top Up</button></section>`
+ if(state.view==='security') return `<section class="panel"><div class="eyebrow">SECURITY CENTER</div><h2>Lapisan keamanan</h2><div class="security-grid"><div><strong>OAuth</strong><span>Aktif</span></div><div><strong>RLS</strong><span>Aktif</span></div><div><strong>Ledger</strong><span>Server-side</span></div><div><strong>Webhook</strong><span>Verified</span></div></div></section>`
+ return `<section class="cards"><article class="wallet-card"><div class="card-top"><span>Available Balance</span><span class="chip">IDR</span></div><strong>${money(state.wallet?.available_balance||0)}</strong><div class="card-bottom"><span>Pending ${money(state.wallet?.pending_balance||0)}</span><span>${escapeHtml(state.wallet?.wallet_code||'')}</span></div></article><article class="stat"><span>Total transaksi</span><strong>${state.transactions.length}</strong><small>20 transaksi terbaru</small></article><article class="stat"><span>Status wallet</span><strong>Active</strong><small>RLS protected</small></article></section><section class="panel"><div class="panel-head"><div><div class="eyebrow">LEDGER</div><h2>Aktivitas terbaru</h2></div><button class="link" data-view="dashboard">Refresh</button></div>${renderTransactions()}</section>`
+}
+
+function renderTransactions(){
+ if(!state.transactions.length) return `<div class="empty">Belum ada transaksi.</div>`
+ return `<div class="tx-list">${state.transactions.map(t=>`<div class="tx"><div><strong>${escapeHtml(t.description||t.entry_type)}</strong><small>${new Date(t.created_at).toLocaleString('id-ID')}</small></div><strong class="${t.direction==='credit'?'credit':'debit'}">${t.direction==='credit'?'+':'-'}${money(t.amount)}</strong></div>`).join('')}</div>`
+}
+
+function renderModal(){return `<div class="modal-wrap"><div class="modal"><button class="close" id="closeModal">×</button>${state.modal}</div></div>`}
+
+function escapeHtml(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+
+async function signIn(provider){
+ state.error='';render();
+ const {error}=await supabase.auth.signInWithOAuth({provider,options:{redirectTo:window.location.origin}})
+ if(error){state.error=error.message;render()}
+}
+
+async function doTopup(){
+ const amount=Number(document.getElementById('topupAmount').value)
+ const method=document.getElementById('topupMethod').value
+ if(!Number.isFinite(amount)||amount<10000){alert('Minimum top up Rp10.000');return}
+ const {data:{session}}=await supabase.auth.getSession()
+ const {data,error}=await supabase.functions.invoke('provider-create-topup',{body:{amount,method},headers:{Authorization:`Bearer ${session?.access_token||''}`}})
+ if(error){alert(error.message);return}
+ if(data?.error){alert(data.error);return}
+ state.modal=`<h2>Pembayaran dibuat</h2><p>Order ${escapeHtml(data.topup_id)} sudah dibuat dengan status pending.</p><span class="hint">Hubungkan adapter provider produksi untuk mengembalikan QRIS/VA/payment URL.</span>`
+ render()
+}
+
+async function doWithdraw(){
+ const amount=Number(document.getElementById('withdrawAmount').value)
+ const bank_code=document.getElementById('bankCode').value.trim()
+ const account_number=document.getElementById('accountNumber').value.trim()
+ const account_name=document.getElementById('accountName').value.trim()
+ if(!Number.isFinite(amount)||amount<=0||!bank_code||!account_number||!account_name){alert('Lengkapi data penarikan.');return}
+ const {data:{session}}=await supabase.auth.getSession()
+ const {data,error}=await supabase.functions.invoke('create-withdrawal',{body:{amount,bank_code,account_number,account_name},headers:{Authorization:`Bearer ${session?.access_token||''}`}})
+ if(error||data?.error){alert(error?.message||data?.error||'Withdraw gagal');return}
+ await loadWallet();state.modal=`<h2>Penarikan dibuat</h2><p>ID withdrawal: ${escapeHtml(data.withdrawal_id)}</p><span class="hint">Dana sudah di-reserve dan menunggu payout provider.</span>`;render()
+}
+
+document.addEventListener('click',async e=>{
+ const btn=e.target.closest('button'); if(!btn) return
+ if(btn.dataset.provider) return signIn(btn.dataset.provider)
+ if(btn.id==='logout'){await supabase.auth.signOut();return}
+ if(btn.id==='closeModal'){state.modal=null;render();return}
+ if(btn.dataset.view){state.view=btn.dataset.view;render();return}
+ if(btn.dataset.action){state.view=btn.dataset.action;render();return}
+ if(btn.id==='submitTopup') return doTopup()
+ if(btn.id==='submitWithdraw') return doWithdraw()
+})
+
+supabase.auth.onAuthStateChange(async (_event,session)=>{state.user=session?.user||null;if(state.user){await loadWallet()}else{state.wallet=null;state.transactions=[]}state.loading=false;render()})
+
+;(async()=>{const {data:{session}}=await supabase.auth.getSession();state.user=session?.user||null;if(state.user)await loadWallet();state.loading=false;render()})()
