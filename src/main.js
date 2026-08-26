@@ -1,4 +1,5 @@
 import './style.css'
+import './app-shell.css'
 import { createClient } from '@supabase/supabase-js'
 import { renderDapin, openDapinModal, handleDapinAction, setDapinView, deleteMember } from './dapin.js'
 
