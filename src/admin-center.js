@@ -67,41 +67,44 @@ function transactions(){return panel('Transaksi DAPIN',`<form class="ac-form" da
 function profiles(){return panel('Administrator & Role',`<div class="ac-note">Role dikontrol oleh Supabase dan tidak dapat diubah dari browser. Perubahan role harus melalui jalur backend terpercaya.</div>${table(['Pengguna','Role','Dibuat'],profileRows(),'2fr 1fr 1fr')}`,'<button class="ac-action" data-ac-refresh>↻ Refresh</button>')}
 function security(){return `<div class="ac-section-grid">${panel('Security Events',table(['Waktu','Severity','Event','User','Jenis'],securityRows()))}${panel('Audit Log',table(['Waktu','Aksi','Entitas','User','ID'],auditRows()))}</div>`}
 
+function ensureHost(r){let host=r.querySelector('.finora-admin-page');if(host)return host;host=document.createElement('div');host.className='finora-admin-page';r.replaceChildren(host);return host}
 function render(){
- const r=pageRoot(); if(!isAdminPage())return
- const host=r.querySelector('.finora-admin-page'); if(!host)return
+ const r=pageRoot(); if(!isAdminPage()||!r)return
+ const host=ensureHost(r)
  host.innerHTML=`<div class="ac-head"><div><span class="ac-kicker">PLATFORM CONTROL</span><h1>Feature Center</h1><p>Control panel operasional DAPIN berbasis Supabase.</p></div><div class="ac-head-actions"><span class="ac-lock">${loading?'● LOADING':'● ADMIN SESSION'}</span><button class="ac-action" data-ac-refresh>↻ Refresh</button></div></div><nav class="ac-nav">${TABS.map(([id,label])=>tabButton(id,label)).join('')}</nav>${lastError?`<div class="ac-error">${esc(lastError)}</div>`:''}<div class="ac-content">${loading?'<div class="ac-loading">Memuat data DAPIN…</div>':({overview,members,savings,loans,payments,transactions,profiles,security}[tab]||overview)()}</div>`
 }
+function tabButton(id,label){return `<button class="ac-tab ${tab===id?'active':''}" data-ac-tab="${id}">${label}</button>`}
 
 async function submitForm(form){
  const k=form.dataset.acForm
  try{
-  if(k==='member'){const m=await rpc('dapin_create_member',{p_name:document.getElementById('acMemberName').value.trim(),p_email:document.getElementById('acMemberEmail').value.trim()||null,p_phone:document.getElementById('acMemberPhone').value.trim()||null,p_address:document.getElementById('acMemberAddress').value.trim()||null,p_joined_at:new Date().toISOString()});toast(`Anggota ${m.display_id||m.code} berhasil dibuat.`)}
-  if(k==='saving'){await rpc('dapin_record_saving',{p_member_id:document.getElementById('acSavingMember').value,p_type:document.getElementById('acSavingType').value,p_amount:Number(document.getElementById('acSavingAmount').value),p_note:document.getElementById('acSavingNote').value.trim()||null});toast('Simpanan berhasil dicatat.')}
-  if(k==='loan'){await rpc('dapin_create_loan',{p_member_id:document.getElementById('acLoanMember').value,p_amount:Number(document.getElementById('acLoanAmount').value),p_tenor:Number(document.getElementById('acLoanTenor').value),p_status:document.getElementById('acLoanStatus').value,p_note:document.getElementById('acLoanNote').value.trim()||null});toast('Pinjaman berhasil dibuat.')}
-  if(k==='payment'){await rpc('dapin_record_payment',{p_loan_id:document.getElementById('acPaymentLoan').value,p_amount:Number(document.getElementById('acPaymentAmount').value),p_method:document.getElementById('acPaymentMethod').value,p_note:document.getElementById('acPaymentNote').value.trim()||null});toast('Angsuran berhasil dicatat.')}
-  if(k==='transaction'){await rpc('dapin_record_transaction',{p_label:document.getElementById('acTxLabel').value.trim(),p_amount:Number(document.getElementById('acTxAmount').value),p_direction:document.getElementById('acTxDirection').value,p_member_id:document.getElementById('acTxMember').value||null,p_reference_type:null,p_reference_id:null,p_note:document.getElementById('acTxNote').value.trim()||null});toast('Transaksi berhasil dicatat.')}
+  if(k==='member'){const name=document.getElementById('acMemberName').value.trim();if(!name)throw new Error('Nama anggota wajib diisi.');const m=await rpc('dapin_create_member',{p_name:name,p_email:document.getElementById('acMemberEmail').value.trim()||null,p_phone:document.getElementById('acMemberPhone').value.trim()||null,p_address:document.getElementById('acMemberAddress').value.trim()||null,p_joined_at:new Date().toISOString()});toast(`Anggota ${m.display_id||m.code} berhasil dibuat.`)}
+  if(k==='saving'){const member_id=document.getElementById('acSavingMember').value;if(!member_id)throw new Error('Pilih anggota.');const amount=Number(document.getElementById('acSavingAmount').value);if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal simpanan tidak valid.');await rpc('dapin_record_saving',{p_member_id:member_id,p_type:document.getElementById('acSavingType').value,p_amount:amount,p_note:document.getElementById('acSavingNote').value.trim()||null});toast('Simpanan berhasil dicatat.')}
+  if(k==='loan'){const member_id=document.getElementById('acLoanMember').value;const amount=Number(document.getElementById('acLoanAmount').value);const tenor=Number(document.getElementById('acLoanTenor').value);if(!member_id||!Number.isFinite(amount)||amount<=0||!Number.isInteger(tenor)||tenor<=0)throw new Error('Data pinjaman belum lengkap.');await rpc('dapin_create_loan',{p_member_id:member_id,p_amount:amount,p_tenor:tenor,p_status:document.getElementById('acLoanStatus').value,p_note:document.getElementById('acLoanNote').value.trim()||null});toast('Pinjaman berhasil dibuat.')}
+  if(k==='payment'){const loan_id=document.getElementById('acPaymentLoan').value;const amount=Number(document.getElementById('acPaymentAmount').value);if(!loan_id||!Number.isFinite(amount)||amount<=0)throw new Error('Pinjaman dan nominal pembayaran wajib diisi.');await rpc('dapin_record_payment',{p_loan_id:loan_id,p_amount:amount,p_method:document.getElementById('acPaymentMethod').value,p_note:document.getElementById('acPaymentNote').value.trim()||null});toast('Angsuran berhasil dicatat.')}
+  if(k==='transaction'){const label=document.getElementById('acTxLabel').value.trim();const amount=Number(document.getElementById('acTxAmount').value);if(!label||!Number.isFinite(amount)||amount<=0)throw new Error('Label dan nominal transaksi wajib diisi.');await rpc('dapin_record_transaction',{p_label:label,p_amount:amount,p_direction:document.getElementById('acTxDirection').value,p_member_id:document.getElementById('acTxMember').value||null,p_reference_type:null,p_reference_id:null,p_note:document.getElementById('acTxNote').value.trim()||null});toast('Transaksi berhasil dicatat.')}
   await loadData();render()
- }catch(e){toast(e.message,false)}
+ }catch(e){toast(e.message||String(e),false)}
 }
 
-async function onClick(e){
+async function handleClick(e){
  if(!isAdminPage())return
- const t=e.target.closest('[data-ac-tab]'); if(t){tab=t.dataset.acTab;render();return}
- const g=e.target.closest('[data-ac-tab-go]'); if(g){tab=g.dataset.acTabGo;render();return}
+ const t=e.target.closest('[data-ac-tab]');if(t){tab=t.dataset.acTab;render();return}
+ const g=e.target.closest('[data-ac-tab-go]');if(g){tab=g.dataset.acTabGo;render();return}
  if(e.target.closest('[data-ac-refresh]')){await refresh();return}
- const s=e.target.closest('[data-member-status]'); if(s){try{await rpc('dapin_set_member_status',{p_member_id:s.dataset.memberStatus,p_status:s.dataset.status});toast('Status anggota diperbarui.');await loadData();render()}catch(err){toast(err.message,false)}return}
+ const s=e.target.closest('[data-member-status]');if(s){try{await rpc('dapin_set_member_status',{p_member_id:s.dataset.memberStatus,p_status:s.dataset.status});toast('Status anggota diperbarui.');await loadData();render()}catch(err){toast(err.message,false)}return}
 }
-async function onChange(e){
+async function handleChange(e){
  if(!isAdminPage())return
- const s=e.target.closest('[data-loan-status]'); if(s?.value){try{await rpc('dapin_set_loan_status',{p_loan_id:s.dataset.loanStatus,p_status:s.value});toast('Status pinjaman diperbarui.');await loadData();render()}catch(err){toast(err.message,false)}}
+ const s=e.target.closest('[data-loan-status]');if(s?.value){try{await rpc('dapin_set_loan_status',{p_loan_id:s.dataset.loanStatus,p_status:s.value});toast('Status pinjaman diperbarui.');await loadData();render()}catch(err){toast(err.message,false)}}
 }
 
-document.addEventListener('click',e=>{onClick(e)})
-document.addEventListener('change',e=>{onChange(e)})
+document.addEventListener('click',handleClick)
+document.addEventListener('change',handleChange)
 document.addEventListener('submit',e=>{if(e.target.matches('[data-ac-form]')){e.preventDefault();submitForm(e.target)}})
 
 const observer=new MutationObserver(async()=>{
+ const page=pageRoot()
  if(isAdminPage()&&!booted){booted=true;loading=true;render();try{await loadData();lastError=''}catch(e){lastError=e.message}finally{loading=false;render()}}
  if(!isAdminPage())booted=false
 })
