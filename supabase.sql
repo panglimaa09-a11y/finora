@@ -59,21 +59,15 @@ drop trigger if exists on_auth_user_created_wallet on auth.users;
 create trigger on_auth_user_created_wallet after insert on auth.users for each row execute function public.handle_new_user();
 create or replace function public.post_topup(p_topup_id uuid, p_provider_reference text) returns void language plpgsql security definer set search_path=public as $$ declare t public.topups; w public.wallets; begin select * into t from public.topups where id=p_topup_id for update; if t.id is null then raise exception 'TOPUP_NOT_FOUND'; end if; if t.status='paid' then return; end if; select * into w from public.wallets where id=t.wallet_id for update; update public.topups set status='paid',provider_reference=coalesce(p_provider_reference,provider_reference),updated_at=now() where id=t.id; update public.wallets set available_balance=available_balance+t.amount,updated_at=now() where id=w.id; insert into public.ledger_entries(wallet_id,user_id,direction,entry_type,amount,status,external_reference,idempotency_key,description,metadata) values(w.id,t.user_id,'credit','topup',t.amount,'posted',p_provider_reference,'topup:'||t.id::text,'Top up wallet',jsonb_build_object('topup_id',t.id)); end $$;
 create or replace function public.create_withdrawal(p_amount numeric,p_bank_code text,p_account_number text,p_account_name text) returns uuid language plpgsql security definer set search_path=public as $$ declare w public.wallets; wid uuid; begin select * into w from public.wallets where user_id=auth.uid() for update; if w.id is null then raise exception 'WALLET_NOT_FOUND'; end if; if w.status<>'active' then raise exception 'WALLET_LOCKED'; end if; if p_amount<=0 or w.available_balance<p_amount then raise exception 'INSUFFICIENT_BALANCE'; end if; update public.wallets set available_balance=available_balance-p_amount,pending_balance=pending_balance+p_amount,updated_at=now() where id=w.id; insert into public.withdrawals(wallet_id,user_id,amount,bank_code,account_number,account_name) values(w.id,auth.uid(),p_amount,p_bank_code,p_account_number,p_account_name) returning id into wid; insert into public.ledger_entries(wallet_id,user_id,direction,entry_type,amount,status,idempotency_key,description,metadata) values(w.id,auth.uid(),'debit','withdrawal',p_amount,'pending','withdrawal:'||wid::text,'Penarikan dana',jsonb_build_object('withdrawal_id',wid)); return wid; end $$;
-alter table public.wallets enable row level security; alter table public.ledger_entries enable row level security; alter table public.topups enable row level security; alter table public.withdrawals enable row level security;
-drop policy if exists wallet_select_own on public.wallets; create policy wallet_select_own on public.wallets for select using(auth.uid()=user_id);
-drop policy if exists ledger_select_own on public.ledger_entries; create policy ledger_select_own on public.ledger_entries for select using(auth.uid()=user_id);
-drop policy if exists topup_select_own on public.topups; create policy topup_select_own on public.topups for select using(auth.uid()=user_id);
-drop policy if exists withdrawal_select_own on public.withdrawals; create policy withdrawal_select_own on public.withdrawals for select using(auth.uid()=user_id);
-grant execute on function public.ensure_wallet() to authenticated; grant execute on function public.post_topup(uuid,text) to service_role; grant execute on function public.create_withdrawal(numeric,text,text,text) to authenticated;
-
--- DAPIN server-side data model: no browser localStorage persistence.
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  full_name text,
-  role text not null default 'member' check (role in ('member','admin','super_admin')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+alter table public.profiles add column if not exists role text;
+alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+alter table public.profiles alter column role set default 'member';
+update public.profiles set role='member' where role is null;
+DO $$ BEGIN
+  if not exists (select 1 from pg_constraint where conname='profiles_role_check') then
+    alter table public.profiles add constraint profiles_role_check check (role in ('member','admin','super_admin'));
+  end if;
+END $$;
 
 create table if not exists public.dapin_members (
   id uuid primary key default gen_random_uuid(),
@@ -88,7 +82,6 @@ create table if not exists public.dapin_members (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.dapin_savings (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.dapin_members(id) on delete restrict,
@@ -98,7 +91,6 @@ create table if not exists public.dapin_savings (
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.dapin_loans (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.dapin_members(id) on delete restrict,
@@ -111,7 +103,6 @@ create table if not exists public.dapin_loans (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.dapin_loan_payments (
   id uuid primary key default gen_random_uuid(),
   loan_id uuid not null references public.dapin_loans(id) on delete restrict,
@@ -122,7 +113,6 @@ create table if not exists public.dapin_loan_payments (
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.dapin_transactions (
   id uuid primary key default gen_random_uuid(),
   member_id uuid references public.dapin_members(id) on delete set null,
@@ -152,7 +142,7 @@ create trigger dapin_members_touch_updated_at before update on public.dapin_memb
 drop trigger if exists dapin_loans_touch_updated_at on public.dapin_loans;
 create trigger dapin_loans_touch_updated_at before update on public.dapin_loans for each row execute function public.touch_updated_at();
 
-create or replace function public.handle_new_profile() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.profiles(id,full_name) values(new.id,coalesce(new.raw_user_meta_data->>'full_name',new.email)) on conflict(id) do nothing; return new; end $$;
+create or replace function public.handle_new_profile() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.profiles(id,full_name,role) values(new.id,coalesce(new.raw_user_meta_data->>'full_name',new.email),'member') on conflict(id) do nothing; return new; end $$;
 drop trigger if exists on_auth_user_created_profile on auth.users;
 create trigger on_auth_user_created_profile after insert on auth.users for each row execute function public.handle_new_profile();
 
@@ -181,34 +171,29 @@ drop policy if exists profiles_admin_manage on public.profiles;
 create policy profiles_admin_manage on public.profiles for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists dapin_members_select on public.dapin_members;
-create policy dapin_members_select on public.dapin_members for select using (public.is_admin() or auth.uid()=user_id);
-drop policy if exists dapin_members_admin_insert on public.dapin_members;
-create policy dapin_members_admin_insert on public.dapin_members for insert with check (public.is_admin());
-drop policy if exists dapin_members_admin_update on public.dapin_members;
-create policy dapin_members_admin_update on public.dapin_members for update using (public.is_admin()) with check (public.is_admin());
-drop policy if exists dapin_members_admin_delete on public.dapin_members;
-create policy dapin_members_admin_delete on public.dapin_members for delete using (public.is_admin());
+create policy dapin_members_select on public.dapin_members for select using (public.is_admin() or user_id=auth.uid());
+drop policy if exists dapin_members_admin on public.dapin_members;
+create policy dapin_members_admin on public.dapin_members for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists dapin_savings_select on public.dapin_savings;
-create policy dapin_savings_select on public.dapin_savings for select using (public.is_admin() or exists(select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
-drop policy if exists dapin_savings_admin_write on public.dapin_savings;
-create policy dapin_savings_admin_write on public.dapin_savings for all using (public.is_admin()) with check (public.is_admin());
+create policy dapin_savings_select on public.dapin_savings for select using (public.is_admin() or exists (select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
+drop policy if exists dapin_savings_admin on public.dapin_savings;
+create policy dapin_savings_admin on public.dapin_savings for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists dapin_loans_select on public.dapin_loans;
-create policy dapin_loans_select on public.dapin_loans for select using (public.is_admin() or exists(select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
-drop policy if exists dapin_loans_admin_write on public.dapin_loans;
-create policy dapin_loans_admin_write on public.dapin_loans for all using (public.is_admin()) with check (public.is_admin());
+create policy dapin_loans_select on public.dapin_loans for select using (public.is_admin() or exists (select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
+drop policy if exists dapin_loans_admin on public.dapin_loans;
+create policy dapin_loans_admin on public.dapin_loans for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists dapin_loan_payments_select on public.dapin_loan_payments;
-create policy dapin_loan_payments_select on public.dapin_loan_payments for select using (public.is_admin() or exists(select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
-drop policy if exists dapin_loan_payments_admin_write on public.dapin_loan_payments;
-create policy dapin_loan_payments_admin_write on public.dapin_loan_payments for all using (public.is_admin()) with check (public.is_admin());
+create policy dapin_loan_payments_select on public.dapin_loan_payments for select using (public.is_admin() or exists (select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
+drop policy if exists dapin_loan_payments_admin on public.dapin_loan_payments;
+create policy dapin_loan_payments_admin on public.dapin_loan_payments for all using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists dapin_transactions_select on public.dapin_transactions;
-create policy dapin_transactions_select on public.dapin_transactions for select using (public.is_admin() or exists(select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
-drop policy if exists dapin_transactions_admin_write on public.dapin_transactions;
-create policy dapin_transactions_admin_write on public.dapin_transactions for all using (public.is_admin()) with check (public.is_admin());
+create policy dapin_transactions_select on public.dapin_transactions for select using (public.is_admin() or exists (select 1 from public.dapin_members m where m.id=member_id and m.user_id=auth.uid()));
+drop policy if exists dapin_transactions_admin on public.dapin_transactions;
+create policy dapin_transactions_admin on public.dapin_transactions for all using (public.is_admin()) with check (public.is_admin());
 
-insert into public.audit_logs(user_id,action,entity_type,metadata)
-select auth.uid(),'dapin_schema_initialized','system',jsonb_build_object('source','supabase.sql','version',1)
-where auth.uid() is not null;
+grant select on public.profiles,public.dapin_members,public.dapin_savings,public.dapin_loans,public.dapin_loan_payments,public.dapin_transactions to authenticated;
+grant insert,update,delete on public.dapin_members,public.dapin_savings,public.dapin_loans,public.dapin_loan_payments,public.dapin_transactions to authenticated;
