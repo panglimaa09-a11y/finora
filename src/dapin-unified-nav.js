@@ -40,15 +40,12 @@ function injectStyle() {
     .dapin-parent{position:relative}
     .dapin-parent:after{content:'⌄';margin-left:auto;font-size:11px;color:#627087;transition:transform .18s}
     .dapin-parent.open:after{transform:rotate(180deg)}
-    @media(max-width:900px){.dapin-unified-group{padding-left:6px}.dapin-unified-group .side-item{min-height:38px}}
   `
   document.head.appendChild(style)
 }
 
 function closeLegacyDapinNav() {
-  document.querySelectorAll('.dapin-sidebar').forEach((sidebar) => {
-    sidebar.setAttribute('aria-hidden', 'true')
-  })
+  document.querySelectorAll('.dapin-sidebar').forEach((sidebar) => sidebar.setAttribute('aria-hidden', 'true'))
 }
 
 function findGlobalDapinSection() {
@@ -57,20 +54,51 @@ function findGlobalDapinSection() {
 }
 
 function getCurrentView() {
-  const active = document.querySelector('.dapin-sidebar .dapin-nav.active')
   if (document.querySelector('.dapin-graph-page')) return 'grafik'
+  const active = document.querySelector('.dapin-sidebar .dapin-nav.active')
   return active?.dataset?.dapinView || 'dashboard'
+}
+
+function ensureSidebarToggle() {
+  if (document.querySelector('.sidebar-toggle-fab')) return
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'sidebar-toggle-fab'
+  button.setAttribute('aria-label', 'Buka menu navigasi')
+  button.innerHTML = '☰'
+  document.body.appendChild(button)
+}
+
+function syncSidebarToggle() {
+  const shell = document.querySelector('.app-shell')
+  const sidebar = document.querySelector('.app-shell .sidebar')
+  const button = document.querySelector('.sidebar-toggle-fab')
+  if (!shell || !sidebar || !button) return
+  const visible = sidebar.classList.contains('open')
+  shell.classList.toggle('sidebar-visible', visible)
+  button.innerHTML = visible ? '×' : '☰'
+  button.setAttribute('aria-label', visible ? 'Tutup menu navigasi' : 'Buka menu navigasi')
+}
+
+function toggleSidebar() {
+  const trigger = document.querySelector('.app-shell .side-collapse')
+  if (trigger) {
+    trigger.click()
+    return
+  }
+  const sidebar = document.querySelector('.app-shell .sidebar')
+  sidebar?.classList.toggle('open')
+  syncSidebarToggle()
 }
 
 function ensureUnifiedNav() {
   const section = findGlobalDapinSection()
   if (!section || section.dataset.unified === '1') return
-
   const parent = section.querySelector('[data-view="dapin"]')
   if (!parent) return
 
   section.dataset.unified = '1'
-  parent.classList.add('dapin-parent')
+  parent.classList.add('dapin-parent','open')
 
   const label = document.createElement('div')
   label.className = 'dapin-section-label'
@@ -80,18 +108,13 @@ function ensureUnifiedNav() {
   group.className = 'dapin-unified-group'
   group.dataset.dapinUnified = '1'
 
-  const admin = isAdmin()
-  const items = admin ? DAPIN_ADMIN : DAPIN_MEMBER
-  const current = getCurrentView()
+  const items = isAdmin() ? DAPIN_ADMIN : DAPIN_MEMBER
   group.innerHTML = items.map(([id, icon, text]) => `
-    <button class="side-item ${current === id ? 'active' : ''}" type="button" data-dapin-unified-view="${id}">
-      <span>${icon}</span><b>${text}</b>
-    </button>
+    <button class="side-item" type="button" data-dapin-unified-view="${id}"><span>${icon}</span><b>${text}</b></button>
   `).join('')
 
   parent.insertAdjacentElement('afterend', label)
   label.insertAdjacentElement('afterend', group)
-  parent.classList.add('open')
 }
 
 function syncUnifiedNav() {
@@ -105,54 +128,49 @@ function syncUnifiedNav() {
 }
 
 function activateDapinView(view) {
+  if (view === 'dashboard') {
+    document.querySelector('.dapin-sidebar [data-dapin-view="dashboard"]')?.click()
+    return
+  }
   if (view === 'grafik') {
-    const graphButton = document.querySelector('.dapin-sidebar [data-dapin-graph-nav]')
-    if (graphButton) {
-      graphButton.click()
-      return
-    }
-    const dashboard = document.querySelector('.sidebar [data-view="dapin"]')
-    if (dashboard) dashboard.click()
+    document.querySelector('.dapin-sidebar [data-dapin-graph-nav]')?.click()
     return
   }
-
-  const legacy = document.querySelector(`.dapin-sidebar [data-dapin-view="${CSS.escape(view)}"]`)
-  if (legacy) {
-    legacy.click()
-    return
-  }
-
-  const dashboard = document.querySelector('.sidebar [data-view="dapin"]')
-  if (dashboard) dashboard.click()
+  document.querySelector(`.dapin-sidebar [data-dapin-view="${CSS.escape(view)}"]`)?.click()
 }
 
 document.addEventListener('click', (event) => {
-  const unified = event.target.closest?.('[data-dapin-unified-view]')
-  if (unified) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    activateDapinView(unified.dataset.dapinUnifiedView)
+  const toggle = event.target.closest?.('.sidebar-toggle-fab')
+  if (toggle) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    toggleSidebar();
+    return
+  }
+
+  const button = event.target.closest?.('[data-dapin-unified-view]')
+  if (button) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    activateDapinView(button.dataset.dapinUnifiedView)
     return
   }
 
   const dapinRoot = event.target.closest?.('.sidebar [data-view="dapin"]')
   if (dapinRoot) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    const dashboard = document.querySelector('.dapin-sidebar [data-dapin-view="dashboard"]')
-    if (dashboard) {
-      dashboard.click()
-      return
-    }
-    dapinRoot.click()
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    document.querySelector('.dapin-sidebar [data-dapin-view="dashboard"]')?.click()
   }
 }, true)
 
 function sync() {
   injectStyle()
+  ensureSidebarToggle()
   if (isDapin()) closeLegacyDapinNav()
   ensureUnifiedNav()
   syncUnifiedNav()
+  syncSidebarToggle()
 }
 
 new MutationObserver(sync).observe(document.body, { childList: true, subtree: true })
