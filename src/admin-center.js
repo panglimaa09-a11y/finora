@@ -1,9 +1,6 @@
 import './admin-center.css'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from './main.js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-const supabase = url && key ? createClient(url, key) : null
 const money = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
 const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
 const wa = phone => { const p=String(phone||'').replace(/\D/g,''); if(!p) return ''; const n=p.startsWith('0')?'62'+p.slice(1):p.startsWith('62')?p:p; return n.length>=10?`https://wa.me/${n}?text=${encodeURIComponent('Halo, kami dari DAPIN Balongbendo. Kami menghubungi terkait data keanggotaan Anda.')}`:'' }
