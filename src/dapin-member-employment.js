@@ -7,7 +7,8 @@ async function currentRole() {
   if (!supabase) return 'member'
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 'member'
-  const { data } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (error) return 'member'
   return String(data?.role || 'member').toLowerCase()
 }
 
@@ -63,12 +64,13 @@ async function renderEmployment(modal, formMode = false, member = null) {
     const data = member || await loadMemberFromModal(modal)
     if (!data) return
     const role = await currentRole()
+    const canEdit = ['hr','super_admin'].includes(role)
     const host = modal.querySelector('.md-body')
     if (!host) return
     const existing = host.querySelector('[data-employment-card]')
     if (existing) existing.remove()
     const node = document.createElement('div')
-    node.innerHTML = formMode ? (['hr','super_admin'].includes(role) ? employmentForm(data) : employmentCard(data, role)) : employmentCard(data, role)
+    node.innerHTML = formMode && canEdit ? employmentForm(data) : employmentCard(data, role)
     host.insertBefore(node.firstElementChild, host.children[1] || null)
   } finally { loading = false }
 }
