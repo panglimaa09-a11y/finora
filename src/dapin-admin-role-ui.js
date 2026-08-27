@@ -3,6 +3,13 @@ import { supabase } from './main.js'
 const esc = s => String(s ?? '').replace(/[&<>'\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]))
 let renderedFor = ''
 
+const ROLE_LABELS = {
+  member: 'Member',
+  hr: 'HR',
+  admin: 'Admin',
+  finance: 'Finance',
+}
+
 async function loadRoleTarget() {
   if (!supabase) return
   const { data: { user } } = await supabase.auth.getUser()
@@ -10,7 +17,6 @@ async function loadRoleTarget() {
   const { data: me } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   if (me?.role !== 'super_admin') return
 
-  const rows = [...document.querySelectorAll('.ac-table-row')]
   const profilePanel = [...document.querySelectorAll('.ac-panel')].find(p => /Administrator & Role/i.test(p.textContent || ''))
   if (!profilePanel) return
   const table = profilePanel.querySelector('.ac-table')
@@ -19,28 +25,21 @@ async function loadRoleTarget() {
   const signature = table.textContent || ''
   if (renderedFor === signature) return
   renderedFor = signature
-
-  const old = profilePanel.querySelector('[data-dapin-role-manager]')
-  old?.remove()
+  profilePanel.querySelector('[data-dapin-role-manager]')?.remove()
 
   const box = document.createElement('div')
   box.dataset.dapinRoleManager = '1'
   box.className = 'dapin-role-manager'
   box.innerHTML = `
     <div class="drm-head">
-      <div><strong>Kelola Hak Akses</strong><small>Hanya Super Admin yang dapat mengubah role.</small></div>
+      <div><strong>Kelola Role & Hak Akses</strong><small>Hanya Super Admin yang dapat mengubah role.</small></div>
       <span class="drm-badge">SUPER ADMIN</span>
     </div>
     <div class="drm-grid">
-      <div class="drm-note">Admin mendapatkan akses operasional DAPIN. Super Admin tetap satu-satunya role yang dapat mengatur role.</div>
+      <div class="drm-note">Role otomatis menentukan tampilan modul. Hak database tetap dipaksa oleh RPC dan RLS.</div>
       <div class="drm-controls">
-        <select class="drm-select" data-drm-user>
-          <option value="">Pilih pengguna</option>
-        </select>
-        <select class="drm-select" data-drm-role>
-          <option value="member">Member</option>
-          <option value="admin">Admin</option>
-        </select>
+        <select class="drm-select" data-drm-user><option value="">Pilih pengguna</option></select>
+        <select class="drm-select" data-drm-role>${Object.entries(ROLE_LABELS).map(([v,t]) => `<option value="${v}">${t}</option>`).join('')}</select>
         <button class="drm-save" type="button" data-drm-save>Simpan Role</button>
       </div>
     </div>`
@@ -48,24 +47,20 @@ async function loadRoleTarget() {
 
   const select = box.querySelector('[data-drm-user]')
   const { data: profiles, error } = await supabase.from('profiles').select('id,full_name,email,role').order('created_at', { ascending: true })
-  if (error) {
-    box.querySelector('.drm-note').textContent = error.message
-    return
-  }
+  if (error) { box.querySelector('.drm-note').textContent = error.message; return }
 
   for (const p of profiles || []) {
     if (p.id === user.id) continue
     const option = document.createElement('option')
     option.value = p.id
-    option.textContent = `${p.full_name || p.email || p.id} — ${p.role || 'member'}`
+    option.textContent = `${p.full_name || p.email || p.id} — ${ROLE_LABELS[p.role] || p.role || 'Member'}`
     select.appendChild(option)
   }
 
   box.addEventListener('change', e => {
-    if (e.target.matches('[data-drm-user]')) {
-      const selected = profiles?.find(p => p.id === e.target.value)
-      if (selected) box.querySelector('[data-drm-role]').value = selected.role === 'admin' ? 'admin' : 'member'
-    }
+    if (!e.target.matches('[data-drm-user]')) return
+    const selected = profiles?.find(p => p.id === e.target.value)
+    if (selected) box.querySelector('[data-drm-role]').value = ROLE_LABELS[selected.role] ? selected.role : 'member'
   })
 
   box.addEventListener('click', async e => {
@@ -74,16 +69,15 @@ async function loadRoleTarget() {
     const id = box.querySelector('[data-drm-user]').value
     const role = box.querySelector('[data-drm-role]').value
     if (!id) return window.alert('Pilih pengguna terlebih dahulu.')
-    if (!window.confirm(`Tetapkan pengguna ini sebagai ${role.toUpperCase()}?`)) return
+    if (!window.confirm(`Tetapkan pengguna ini sebagai ${ROLE_LABELS[role] || role}?`)) return
     btn.disabled = true
     btn.textContent = 'Menyimpan...'
     try {
       const { error: rpcError } = await supabase.rpc('dapin_set_user_role', { p_user_id: id, p_role: role })
       if (rpcError) throw rpcError
-      window.alert(`Role berhasil diubah menjadi ${role}.`)
+      window.alert(`Role berhasil diubah menjadi ${ROLE_LABELS[role] || role}.`)
       renderedFor = ''
-      const refresh = document.querySelector('[data-ac-refresh]')
-      refresh?.click()
+      document.querySelector('[data-ac-refresh]')?.click()
     } catch (err) {
       window.alert(err?.message || 'Gagal mengubah role.')
     } finally {
@@ -105,9 +99,6 @@ function injectStyle() {
 }
 
 const observer = new MutationObserver(() => {
-  if (document.querySelector('.finora-admin-page')) {
-    injectStyle()
-    void loadRoleTarget()
-  }
+  if (document.querySelector('.finora-admin-page')) { injectStyle(); void loadRoleTarget() }
 })
 observer.observe(document.body, { childList: true, subtree: true })
