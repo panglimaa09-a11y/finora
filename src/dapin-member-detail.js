@@ -8,11 +8,9 @@ const money = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR
 const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
 const waUrl = phone => { const p=String(phone||'').replace(/\D/g,''); if(!p) return ''; const n=p.startsWith('0')?'62'+p.slice(1):p; return /^62\d{8,15}$/.test(n)?`https://wa.me/${n}`:'' }
 
-let openId = null
 let current = null
 let busy = false
 
-function panel(){ return document.querySelector('.admin-center, .finora-admin-page, .page') }
 function memberDisplayId(row){ return row.querySelector('.ac-primary-cell small')?.textContent?.trim() || '' }
 function memberRow(row){ const h=row.closest('.ac-panel')?.querySelector('h2')?.textContent?.trim(); return h==='Data Master Anggota' }
 
@@ -64,7 +62,6 @@ async function onModalClick(e){
  const doc=e.target.closest('[data-md-doc]'); if(doc){ try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(doc.dataset.mdDoc,300); if(error) throw error; window.open(data.signedUrl,'_blank','noopener,noreferrer')}catch(err){alert(err.message)} return }
  const edit=e.target.closest('[data-md-edit]'); if(edit){alert('Form edit data akan memakai RPC dapin_update_member_profile. Jalankan migration profile terlebih dahulu.');return}
  const add=e.target.closest('[data-md-collateral]'); if(add){promptCollateral();return}
- const upload=e.target.closest('[data-md-upload]'); if(upload) return
 }
 
 async function upload(file){
@@ -72,7 +69,7 @@ async function upload(file){
  try{
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(); const path=`${current.member.id}/${crypto.randomUUID()}.${ext}`
   const {error}=await supabase.storage.from('dapin-documents').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false}); if(error) throw error
-  const type=/pdf/i.test(file.type)?'other':file.name.toLowerCase().includes('ktp')?'ktp':file.name.toLowerCase().includes('kk')?'kk':/image/i.test(file.type)?'photo':'other'
+  const type=file.name.toLowerCase().includes('ktp')?'ktp':file.name.toLowerCase().includes('kk')?'kk':/image/i.test(file.type)?'photo':'other'
   const ins=await supabase.from('dapin_member_documents').insert({member_id:current.member.id,document_type:type,file_name:file.name,storage_path:path,mime_type:file.type,file_size:file.size})
   if(ins.error) throw ins.error
   await show(current.member.display_id||current.member.id)
@@ -88,6 +85,7 @@ async function promptCollateral(){
 document.addEventListener('change',e=>{const input=e.target.closest('[data-md-upload]'); if(input?.files?.[0]) upload(input.files[0])})
 document.addEventListener('click',e=>{
  if(busy||document.querySelector('.md-overlay')) return
+ if(e.target.closest('a,button,input,select,textarea,label')) return
  const row=e.target.closest('.ac-table-row'); if(!row||!memberRow(row)) return
  const id=memberDisplayId(row); if(id) show(id)
 })
