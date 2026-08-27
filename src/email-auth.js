@@ -1,12 +1,7 @@
 import { supabase } from './main.js'
 
 const app = document.getElementById('app')
-let installed = false
 let mode = 'signin'
-
-const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({
-  '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
-}[c]))
 
 function renderEmailAuth() {
   if (!app || !supabase || !app.querySelector('.auth-card')) return
@@ -17,10 +12,11 @@ function renderEmailAuth() {
   panel.dataset.emailAuth = '1'
   panel.className = 'email-auth-panel'
   panel.innerHTML = `
-    <div class="email-auth-divider"><span>atau gunakan email</span></div>
+    <div class="email-auth-divider"><span>Email anggota</span></div>
+    <div class="email-auth-note">Anggota DAPIN mendaftar sendiri memakai email yang terdaftar pada data keanggotaan. Setelah berhasil login, akun akan dihubungkan otomatis.</div>
     <form data-email-form class="email-auth-form" novalidate>
-      <label>Nama Lengkap
-        <input name="name" autocomplete="name" placeholder="Nama lengkap" ${mode === 'signin' ? 'hidden' : ''}>
+      <label ${mode === 'signin' ? 'hidden' : ''}>Nama Lengkap
+        <input name="name" autocomplete="name" placeholder="Nama lengkap">
       </label>
       <label>Email
         <input name="email" type="email" autocomplete="email" required placeholder="nama@email.com">
@@ -32,7 +28,7 @@ function renderEmailAuth() {
         <input name="confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Ulangi password">
       </label>
       <div class="email-auth-message" data-email-message role="status"></div>
-      <button class="email-auth-submit" type="submit" data-email-submit>${mode === 'signin' ? 'Masuk dengan Email' : 'Daftar Akun'}</button>
+      <button class="email-auth-submit" type="submit" data-email-submit>${mode === 'signin' ? 'Masuk dengan Email' : 'Daftar Akun Anggota'}</button>
     </form>
     <div class="email-auth-links">
       ${mode === 'signin' ? '<button type="button" data-email-mode="signup">Belum punya akun? Daftar</button><button type="button" data-email-forgot>Lupa password?</button>' : '<button type="button" data-email-mode="signin">Sudah punya akun? Masuk</button>'}
@@ -97,13 +93,13 @@ async function submitEmailAuth(event) {
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-      show('Login berhasil. Memuat akun…')
+      show('Login berhasil. Akun DAPIN akan dicek otomatis…')
     }
   } catch (error) {
     show(error?.message || 'Autentikasi gagal.', true)
   } finally {
     submit.disabled = false
-    submit.textContent = mode === 'signup' ? 'Daftar Akun' : 'Masuk dengan Email'
+    submit.textContent = mode === 'signup' ? 'Daftar Akun Anggota' : 'Masuk dengan Email'
   }
 }
 
@@ -126,21 +122,14 @@ function injectStyle() {
   const style = document.createElement('style')
   style.id = 'email-auth-style'
   style.textContent = `
-    .email-auth-panel{margin-top:18px}.email-auth-divider{display:flex;align-items:center;gap:10px;margin:15px 0;color:#718097;font-size:11px}.email-auth-divider:before,.email-auth-divider:after{content:'';height:1px;background:#233148;flex:1}.email-auth-form{display:grid;gap:11px}.email-auth-form label{display:grid;gap:6px;color:#97a5b8;font-size:10px;font-weight:700}.email-auth-form input{width:100%;box-sizing:border-box;border:1px solid #293a55;background:#101925;color:#edf2f8;border-radius:10px;padding:11px 12px;outline:none;font-size:12px}.email-auth-form input:focus{border-color:#7464c9;box-shadow:0 0 0 3px rgba(116,100,201,.12)}.email-auth-submit{border:0;border-radius:10px;padding:11px 12px;background:#6956bd;color:#fff;font-weight:800;cursor:pointer}.email-auth-submit:disabled{opacity:.6;cursor:not-allowed}.email-auth-message{min-height:16px;font-size:10px;line-height:1.45}.email-auth-message.error{color:#f0a4a4}.email-auth-message.success{color:#72d9aa}.email-auth-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}.email-auth-links button{border:0;background:transparent;color:#9eaafc;padding:2px 0;cursor:pointer;font-size:10px}
+    .email-auth-panel{margin-top:18px}.email-auth-divider{display:flex;align-items:center;gap:10px;margin:15px 0 8px;color:#718097;font-size:11px}.email-auth-divider:before,.email-auth-divider:after{content:'';height:1px;background:#233148;flex:1}.email-auth-note{margin:0 0 14px;color:#8492a7;font-size:10px;line-height:1.55}.email-auth-form{display:grid;gap:11px}.email-auth-form label{display:grid;gap:6px;color:#97a5b8;font-size:10px;font-weight:700}.email-auth-form input{width:100%;box-sizing:border-box;border:1px solid #293a55;background:#101925;color:#edf2f8;border-radius:10px;padding:11px 12px;outline:none;font-size:12px}.email-auth-form input:focus{border-color:#7464c9;box-shadow:0 0 0 3px rgba(116,100,201,.12)}.email-auth-submit{border:0;border-radius:10px;padding:11px 12px;background:#6956bd;color:#fff;font-weight:800;cursor:pointer}.email-auth-submit:disabled{opacity:.6;cursor:not-allowed}.email-auth-message{min-height:16px;font-size:10px;line-height:1.45}.email-auth-message.error{color:#f0a4a4}.email-auth-message.success{color:#72d9aa}.email-auth-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}.email-auth-links button{border:0;background:transparent;color:#9eaafc;padding:2px 0;cursor:pointer;font-size:10px}
   `
   document.head.appendChild(style)
 }
 
 const observer = new MutationObserver(() => {
   if (app?.querySelector('.auth-card') && !app.querySelector('[data-email-auth]')) renderEmailAuth()
-  if (!app?.querySelector('.auth-card')) installed = false
 })
 observer.observe(app, { childList: true, subtree: true })
 
-if (app) {
-  installed = true
-  renderEmailAuth()
-}
-
-void esc
-void installed
+renderEmailAuth()
