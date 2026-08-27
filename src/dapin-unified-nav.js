@@ -6,6 +6,7 @@ const DAPIN_ADMIN = [
   ['angsuran','◷','Angsuran'],
   ['transaksi','↔','Transaksi'],
   ['laporan','▥','Laporan'],
+  ['grafik','▤','Grafik'],
 ]
 const DAPIN_MEMBER = [
   ['dashboard','⌂','Dashboard'],
@@ -57,6 +58,7 @@ function findGlobalDapinSection() {
 
 function getCurrentView() {
   const active = document.querySelector('.dapin-sidebar .dapin-nav.active')
+  if (document.querySelector('.dapin-graph-page')) return 'grafik'
   return active?.dataset?.dapinView || 'dashboard'
 }
 
@@ -103,6 +105,17 @@ function syncUnifiedNav() {
 }
 
 function activateDapinView(view) {
+  if (view === 'grafik') {
+    const graphButton = document.querySelector('.dapin-sidebar [data-dapin-graph-nav]')
+    if (graphButton) {
+      graphButton.click()
+      return
+    }
+    const dashboard = document.querySelector('.sidebar [data-view="dapin"]')
+    if (dashboard) dashboard.click()
+    return
+  }
+
   const legacy = document.querySelector(`.dapin-sidebar [data-dapin-view="${CSS.escape(view)}"]`)
   if (legacy) {
     legacy.click()
@@ -114,11 +127,25 @@ function activateDapinView(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const button = event.target.closest?.('[data-dapin-unified-view]')
-  if (!button) return
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  activateDapinView(button.dataset.dapinUnifiedView)
+  const unified = event.target.closest?.('[data-dapin-unified-view]')
+  if (unified) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    activateDapinView(unified.dataset.dapinUnifiedView)
+    return
+  }
+
+  const dapinRoot = event.target.closest?.('.sidebar [data-view="dapin"]')
+  if (dapinRoot) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const dashboard = document.querySelector('.dapin-sidebar [data-dapin-view="dashboard"]')
+    if (dashboard) {
+      dashboard.click()
+      return
+    }
+    dapinRoot.click()
+  }
 }, true)
 
 function sync() {
