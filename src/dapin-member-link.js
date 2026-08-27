@@ -1,8 +1,9 @@
 import { supabase } from './main.js'
 
-// Link the logged-in account to DAPIN by exact email and synchronize the
-// DAPIN role into the current user's metadata so role-based UI can react
-// without trusting editable browser state.
+// DAPIN account linking: a logged-in user is linked only to an existing
+// DAPIN member record with the exact same verified email. The link is done
+// server-side through a SECURITY DEFINER RPC. No member data is stored in
+// browser storage.
 async function linkCurrentUser() {
   if (!supabase) return null
   const { data: { session } } = await supabase.auth.getSession()
@@ -16,6 +17,7 @@ async function linkCurrentUser() {
     return null
   }
 
+  // Keep the UI role synchronized with the authoritative profiles table.
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
@@ -35,10 +37,21 @@ async function linkCurrentUser() {
 }
 
 if (supabase) {
-  void linkCurrentUser()
-  supabase.auth.onAuthStateChange((event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') && session?.user) {
-      void linkCurrentUser()
+  // INITIAL_SESSION is intentionally not reloaded: after a refresh the link
+  // already exists and reloading again would create a loop.
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!session?.user) return
+    if (event === 'SIGNED_IN') {
+      const member = await linkCurrentUser()
+      // The DAPIN app loads its member data during the same auth transition.
+      // Refresh once after the server-side link so member RLS sees the new
+      // user_id immediately. No member data is stored locally.
+      if (member) window.location.reload()
+      return
     }
+    if (event === 'USER_UPDATED') void linkCurrentUser()
   })
+
+  // Covers an already-authenticated browser session after deployment.
+  void linkCurrentUser()
 }
