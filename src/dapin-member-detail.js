@@ -4,18 +4,14 @@ import { supabase } from './main.js'
 const money = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
 const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
 const waUrl = phone => { const p=String(phone||'').replace(/\D/g,''); if(!p) return ''; const n=p.startsWith('0')?'62'+p.slice(1):p; return /^62\d{8,15}$/.test(n)?`https://wa.me/${n}`:'' }
-
 let current = null
 let busy = false
-
 function memberDisplayId(row){ return row.querySelector('.ac-primary-cell small')?.textContent?.trim() || '' }
 function memberRow(row){ const h=row.closest('.ac-panel')?.querySelector('h2')?.textContent?.trim(); return h==='Data Master Anggota' }
-
 async function loadMember(idOrDisplay){
   if(!supabase) throw new Error('Supabase environment belum tersedia.')
   let q=supabase.from('dapin_members').select('*')
-  if(idOrDisplay?.includes('DAP-MBR-')) q=q.eq('display_id',idOrDisplay)
-  else q=q.eq('id',idOrDisplay)
+  if(idOrDisplay?.includes('DAP-MBR-')) q=q.eq('display_id',idOrDisplay); else q=q.eq('id',idOrDisplay)
   const {data,error}=await q.maybeSingle(); if(error) throw error; if(!data) throw new Error('Anggota tidak ditemukan.')
   const [docs,collaterals,savings,loans,payments,transactions]=await Promise.all([
     supabase.from('dapin_member_documents').select('*').eq('member_id',data.id).order('created_at',{ascending:false}),
@@ -29,131 +25,31 @@ async function loadMember(idOrDisplay){
   current={member:data,docs:docs.data||[],collaterals:collaterals.data||[],savings:savings.data||[],loans:loans.data||[],payments:payments.data||[],transactions:transactions.data||[]}
   return current
 }
-
 function field(label,value){ return `<div class="md-field"><span>${label}</span><strong>${esc(value||'—')}</strong></div>` }
 function summary(){
- const m=current.member, savings=current.savings.reduce((s,x)=>s+Number(x.amount||0),0), paid=current.payments.reduce((s,x)=>s+Number(x.amount||0),0), debt=current.loans.reduce((s,x)=>s+Math.max(0,Number(x.amount||0)-Number(x.paid||0)),0)
- const wa=waUrl(m.phone)
- const message=encodeURIComponent(`Halo ${m.name}, kami dari DAPIN Balongbendo terkait data anggota ${m.display_id||m.code}.`)
- const waAction=wa?`<a class="md-wa" target="_blank" rel="noopener noreferrer" href="${wa}?text=${message}">💬 Chat WhatsApp</a>`:''
+ const m=current.member,savings=current.savings.reduce((s,x)=>s+Number(x.amount||0),0),paid=current.payments.reduce((s,x)=>s+Number(x.amount||0),0),debt=current.loans.reduce((s,x)=>s+Math.max(0,Number(x.amount||0)-Number(x.paid||0)),0)
+ const wa=waUrl(m.phone),message=encodeURIComponent(`Halo ${m.name}, kami dari DAPIN Balongbendo terkait data anggota ${m.display_id||m.code}.`),waAction=wa?`<a class="md-wa" target="_blank" rel="noopener noreferrer" href="${wa}?text=${message}">💬 Chat WhatsApp</a>`:''
  return `<div class="md-summary"><div><span>Total Simpanan</span><strong>${money(savings)}</strong></div><div><span>Total Angsuran</span><strong>${money(paid)}</strong></div><div><span>Sisa Pinjaman</span><strong>${money(debt)}</strong></div><div><span>Status</span><strong>${esc(m.status||'active')}</strong></div></div><div class="md-grid"><section class="md-card"><div class="md-card-head"><span>IDENTITAS</span><h3>Data Anggota</h3></div>${field('ID Anggota',m.display_id||m.code)}${field('Nama Lengkap',m.name)}${field('NIK / KTP',m.nik)}${field('No. KK',m.kk_number)}${field('Tempat Lahir',m.birth_place)}${field('Tanggal Lahir',m.birth_date)}${field('Jenis Kelamin',m.gender==='L'?'Laki-laki':m.gender==='P'?'Perempuan':'—')}${field('Pekerjaan',m.occupation)}${field('Status Perkawinan',m.marital_status)}</section><section class="md-card"><div class="md-card-head"><span>KONTAK</span><h3>Komunikasi</h3></div>${field('Nomor WhatsApp',m.phone)}${field('Email',m.email)}${field('Alamat',m.address)}<div class="md-actions">${waAction}<button class="md-button" data-md-edit>Edit Data</button></div></section></div>`
 }
+function documentLabel(type){return type==='ktp'?'KTP':type==='kk'?'KK':type==='photo'?'FOTO':'DOKUMEN'}
 function documents(){
- return `<section class="md-card"><div class="md-card-head"><div><span>DOKUMEN</span><h3>Dokumen Anggota</h3></div><label class="md-upload">＋ Upload<input type="file" data-md-upload hidden accept="image/*,.pdf"></label></div><div class="md-doc-grid">${current.docs.length?current.docs.map(d=>`<article><div class="md-doc-icon">${d.document_type==='ktp'?'KTP':d.document_type==='kk'?'KK':d.document_type==='photo'?'FOTO':'DOC'}</div><div><strong>${esc(d.file_name)}</strong><small>${esc(d.document_type)} • ${new Date(d.created_at).toLocaleDateString('id-ID')}</small></div><button data-md-doc="${esc(d.storage_path)}">Lihat</button></article>`).join(''):'<div class="md-empty">Belum ada KTP, KK, foto, atau dokumen pendukung.</div>'}</div></section>`
+ const cards=current.docs.map(d=>`<article><div class="md-doc-icon">${documentLabel(d.document_type)}</div><div><strong>${esc(d.file_name)}</strong><small>${esc(d.document_type||'other')} • ${new Date(d.created_at).toLocaleDateString('id-ID')}</small></div><button data-md-doc="${esc(d.storage_path)}">Lihat</button></article>`).join('')
+ return `<section class="md-card"><div class="md-card-head"><div><span>DOKUMEN</span><h3>Dokumen Anggota</h3></div><label class="md-upload">＋ Tambah Dokumen<input type="file" data-md-upload hidden accept="image/*,.pdf" multiple></label></div><div class="md-doc-grid">${cards||'<div class="md-empty">Belum ada dokumen anggota.</div>'}</div></section>`
 }
-function collateral(){
- return `<section class="md-card"><div class="md-card-head"><div><span>JAMINAN</span><h3>Agunan / Jaminan</h3></div><button class="md-button" data-md-collateral>＋ Tambah Jaminan</button></div><div class="md-collateral-grid">${current.collaterals.length?current.collaterals.map(c=>`<article><div><strong>${esc(c.name)}</strong><span>${esc(c.collateral_type)}</span></div><b>${money(c.estimated_value)}</b><small>${esc(c.description||'Tanpa keterangan')} • ${esc(c.status)}</small></article>`).join(''):'<div class="md-empty">Belum ada data jaminan.</div>'}</div></section>`
-}
-function finances(){
- const loans=current.loans.map(l=>`<div><span><strong>${esc(l.display_id||l.id)}</strong><small>${money(l.amount)} • ${l.tenor} bulan</small></span><b>Sisa ${money(Math.max(0,Number(l.amount)-Number(l.paid||0)))}</b></div>`).join('')||'<div class="md-empty">Belum ada pinjaman.</div>'
- return `<section class="md-card"><div class="md-card-head"><span>KEUANGAN</span><h3>Pinjaman & Riwayat</h3></div><div class="md-finance-list">${loans}</div></section>`
-}
-
-function editInput(label,name,value,type='text',extra=''){
-  return `<label class="md-edit-field"><span>${label}</span><input name="${name}" type="${type}" value="${esc(value ?? '')}" ${extra}></label>`
-}
-function editSelect(label,name,value,options){
-  return `<label class="md-edit-field"><span>${label}</span><select name="${name}"><option value="">Pilih...</option>${options.map(([v,t])=>`<option value="${esc(v)}" ${value===v?'selected':''}>${t}</option>`).join('')}</select></label>`
-}
-function editForm(){
-  const m=current.member
-  return `<section class="md-edit-card"><div class="md-card-head"><div><span>EDIT PROFIL</span><h3>Ubah Data Anggota</h3></div></div><form data-md-edit-form><div class="md-edit-grid">${editInput('Nama Lengkap','p_name',m.name)}${editInput('Email','p_email',m.email,'email')}${editInput('Nomor WhatsApp','p_phone',m.phone,'tel')}${editInput('NIK / KTP','p_nik',m.nik)}${editInput('No. KK','p_kk_number',m.kk_number)}${editInput('Tempat Lahir','p_birth_place',m.birth_place)}${editInput('Tanggal Lahir','p_birth_date',m.birth_date,'date')}${editSelect('Jenis Kelamin','p_gender',m.gender,[['L','Laki-laki'],['P','Perempuan']])}${editInput('Pekerjaan','p_occupation',m.occupation)}${editSelect('Status Perkawinan','p_marital_status',m.marital_status,[['Belum Menikah','Belum Menikah'],['Menikah','Menikah'],['Cerai Hidup','Cerai Hidup'],['Cerai Mati','Cerai Mati']])}<label class="md-edit-field md-edit-wide"><span>Alamat</span><textarea name="p_address" rows="3">${esc(m.address ?? '')}</textarea></label></div><div class="md-edit-actions"><button type="button" class="md-button" data-md-edit-cancel>Batal</button><button type="submit" class="md-button md-button-primary" data-md-save>Simpan Perubahan</button></div></form></section>`
-}
-
-function renderModal(){
- if(!current) return
- const m=current.member
- const root=document.createElement('div'); root.className='md-overlay'; root.innerHTML=`<div class="md-modal"><header><div class="md-avatar">${esc((m.name||'A')[0].toUpperCase())}</div><div><span>DAPIN MEMBER</span><h2>${esc(m.name)}</h2><small>${esc(m.display_id||m.code||'')}</small></div><button class="md-close" data-md-close>×</button></header><div class="md-body">${summary()}${documents()}${collateral()}${finances()}</div></div>`
- root.addEventListener('click',onModalClick); document.body.appendChild(root)
-}
-
-function renderEdit(){
-  const body=document.querySelector('.md-overlay .md-body')
-  if(body) body.innerHTML=editForm()
-}
-
-function restoreDetail(){
-  const overlay=document.querySelector('.md-overlay')
-  if(!overlay) return
-  const body=overlay.querySelector('.md-body')
-  if(body) body.innerHTML=`${summary()}${documents()}${collateral()}${finances()}`
-}
-
-async function saveEdit(form){
-  if(!current?.member?.id||busy) return
-  const save=form.querySelector('[data-md-save]')
-  busy=true
-  if(save){save.disabled=true; save.textContent='Menyimpan...'}
-  try{
-    const fd=new FormData(form)
-    const payload={
-      p_member_id: current.member.id,
-      p_name: fd.get('p_name') || null,
-      p_email: fd.get('p_email') || null,
-      p_phone: fd.get('p_phone') || null,
-      p_address: fd.get('p_address') || null,
-      p_nik: fd.get('p_nik') || null,
-      p_kk_number: fd.get('p_kk_number') || null,
-      p_birth_place: fd.get('p_birth_place') || null,
-      p_birth_date: fd.get('p_birth_date') || null,
-      p_gender: fd.get('p_gender') || null,
-      p_occupation: fd.get('p_occupation') || null,
-      p_marital_status: fd.get('p_marital_status') || null,
-    }
-    const {data,error}=await supabase.rpc('dapin_update_member_profile',payload)
-    if(error) throw error
-    if(!data) throw new Error('Data anggota tidak dikembalikan oleh server.')
-    await loadMember(current.member.display_id||current.member.id)
-    renderEditSuccess()
-  }catch(e){
-    alert(e?.message||'Gagal menyimpan perubahan data anggota.')
-  }finally{
-    busy=false
-    if(save){save.disabled=false; save.textContent='Simpan Perubahan'}
-  }
-}
-
-function renderEditSuccess(){
-  const body=document.querySelector('.md-overlay .md-body')
-  if(!body) return
-  body.innerHTML=`<div class="md-empty" style="padding:32px;text-align:center"><strong>✓ Data anggota berhasil diperbarui.</strong><p>Perubahan sudah tersimpan di Supabase.</p><button class="md-button md-button-primary" data-md-back-detail>Kembali ke Detail</button></div>`
-}
-
-async function show(id){ busy=true; try{await loadMember(id); document.querySelector('.md-overlay')?.remove(); renderModal()}catch(e){alert(e.message)}finally{busy=false} }
-
-async function onModalClick(e){
- if(e.target.closest('[data-md-close]')||e.target.classList.contains('md-overlay')){ e.currentTarget.remove(); return }
- const doc=e.target.closest('[data-md-doc]'); if(doc){ try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(doc.dataset.mdDoc,300); if(error) throw error; window.open(data.signedUrl,'_blank','noopener,noreferrer')}catch(err){alert(err.message)} return }
- const edit=e.target.closest('[data-md-edit]'); if(edit){renderEdit();return}
- const cancel=e.target.closest('[data-md-edit-cancel]'); if(cancel){restoreDetail();return}
- const back=e.target.closest('[data-md-back-detail]'); if(back){restoreDetail();return}
- const add=e.target.closest('[data-md-collateral]'); if(add){promptCollateral();return}
- const form=e.target.closest('[data-md-edit-form]'); if(form) return
-}
-
-async function upload(file){
- if(!file||!current||busy) return; busy=true
- try{
-  const ext=(file.name.split('.').pop()||'bin').toLowerCase(); const path=`${current.member.id}/${crypto.randomUUID()}.${ext}`
-  const {error}=await supabase.storage.from('dapin-documents').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false}); if(error) throw error
-  const type=file.name.toLowerCase().includes('ktp')?'ktp':file.name.toLowerCase().includes('kk')?'kk':/image/i.test(file.type)?'photo':'other'
-  const ins=await supabase.from('dapin_member_documents').insert({member_id:current.member.id,document_type:type,file_name:file.name,storage_path:path,mime_type:file.type,file_size:file.size})
-  if(ins.error) throw ins.error
-  await show(current.member.display_id||current.member.id)
- }catch(e){alert(e.message)}finally{busy=false}
-}
-async function promptCollateral(){
- const type=prompt('Jenis jaminan (BPKB, sertifikat, kendaraan, elektronik, dll):'); if(!type) return
- const name=prompt('Nama/deskripsi jaminan:'); if(!name) return
- const value=Number(prompt('Perkiraan nilai jaminan (angka):')||0)
- try{const {error}=await supabase.from('dapin_collaterals').insert({member_id:current.member.id,collateral_type:type,name,estimated_value:value||null}); if(error) throw error; await show(current.member.display_id||current.member.id)}catch(e){alert(e.message)}
-}
-
-document.addEventListener('change',e=>{const input=e.target.closest('[data-md-upload]'); if(input?.files?.[0]) upload(input.files[0])})
-document.addEventListener('submit',e=>{const form=e.target.closest('[data-md-edit-form]'); if(form){e.preventDefault();saveEdit(form)}})
-document.addEventListener('click',e=>{
- if(busy||document.querySelector('.md-overlay')) return
- if(e.target.closest('a,button,input,select,textarea,label')) return
- const row=e.target.closest('.ac-table-row'); if(!row||!memberRow(row)) return
- const id=memberDisplayId(row); if(id) show(id)
-})
+function collateral(){return `<section class="md-card"><div class="md-card-head"><div><span>JAMINAN</span><h3>Agunan / Jaminan</h3></div><button class="md-button" data-md-collateral>＋ Tambah Jaminan</button></div><div class="md-collateral-grid">${current.collaterals.length?current.collaterals.map(c=>`<article><div><strong>${esc(c.name)}</strong><span>${esc(c.collateral_type)}</span></div><b>${money(c.estimated_value)}</b><small>${esc(c.description||'Tanpa keterangan')} • ${esc(c.status)}</small></article>`).join(''):'<div class="md-empty">Belum ada data jaminan.</div>'}</div></section>`}
+function finances(){const loans=current.loans.map(l=>`<div><span><strong>${esc(l.display_id||l.id)}</strong><small>${money(l.amount)} • ${l.tenor} bulan</small></span><b>Sisa ${money(Math.max(0,Number(l.amount)-Number(l.paid||0)))}</b></div>`).join('')||'<div class="md-empty">Belum ada pinjaman.</div>';return `<section class="md-card"><div class="md-card-head"><span>KEUANGAN</span><h3>Pinjaman & Riwayat</h3></div><div class="md-finance-list">${loans}</div></section>`}
+function editInput(label,name,value,type='text',extra=''){return `<label class="md-edit-field"><span>${label}</span><input name="${name}" type="${type}" value="${esc(value ?? '')}" ${extra}></label>`}
+function editSelect(label,name,value,options){return `<label class="md-edit-field"><span>${label}</span><select name="${name}"><option value="">Pilih...</option>${options.map(([v,t])=>`<option value="${esc(v)}" ${value===v?'selected':''}>${t}</option>`).join('')}</select></label>`}
+function editForm(){const m=current.member;return `<section class="md-edit-card"><div class="md-card-head"><div><span>EDIT PROFIL</span><h3>Ubah Data Anggota</h3></div></div><form data-md-edit-form><div class="md-edit-grid">${editInput('Nama Lengkap','p_name',m.name)}${editInput('Email','p_email',m.email,'email')}${editInput('Nomor WhatsApp','p_phone',m.phone,'tel')}${editInput('NIK / KTP','p_nik',m.nik)}${editInput('No. KK','p_kk_number',m.kk_number)}${editInput('Tempat Lahir','p_birth_place',m.birth_place)}${editInput('Tanggal Lahir','p_birth_date',m.birth_date,'date')}${editSelect('Jenis Kelamin','p_gender',m.gender,[['L','Laki-laki'],['P','Perempuan']])}${editInput('Pekerjaan','p_occupation',m.occupation)}${editSelect('Status Perkawinan','p_marital_status',m.marital_status,[['Belum Menikah','Belum Menikah'],['Menikah','Menikah'],['Cerai Hidup','Cerai Hidup'],['Cerai Mati','Cerai Mati']])}<label class="md-edit-field md-edit-wide"><span>Alamat</span><textarea name="p_address" rows="3">${esc(m.address ?? '')}</textarea></label></div><div class="md-edit-actions"><button type="button" class="md-button" data-md-edit-cancel>Batal</button><button type="submit" class="md-button md-button-primary" data-md-save>Simpan Perubahan</button></div></form></section>`}
+function renderModal(){if(!current)return;const m=current.member,root=document.createElement('div');root.className='md-overlay';root.innerHTML=`<div class="md-modal"><header><div class="md-avatar">${esc((m.name||'A')[0].toUpperCase())}</div><div><span>DAPIN MEMBER</span><h2>${esc(m.name)}</h2><small>${esc(m.display_id||m.code||'')}</small></div><button class="md-close" data-md-close>×</button></header><div class="md-body">${summary()}${documents()}${collateral()}${finances()}</div></div>`;root.addEventListener('click',onModalClick);document.body.appendChild(root)}
+function renderEdit(){const body=document.querySelector('.md-overlay .md-body');if(body)body.innerHTML=editForm()}
+function restoreDetail(){const overlay=document.querySelector('.md-overlay');if(!overlay)return;const body=overlay.querySelector('.md-body');if(body)body.innerHTML=`${summary()}${documents()}${collateral()}${finances()}`}
+async function saveEdit(form){if(!current?.member?.id||busy)return;const save=form.querySelector('[data-md-save]');busy=true;if(save){save.disabled=true;save.textContent='Menyimpan...'}try{const fd=new FormData(form),payload={p_member_id:current.member.id,p_name:fd.get('p_name')||null,p_email:fd.get('p_email')||null,p_phone:fd.get('p_phone')||null,p_address:fd.get('p_address')||null,p_nik:fd.get('p_nik')||null,p_kk_number:fd.get('p_kk_number')||null,p_birth_place:fd.get('p_birth_place')||null,p_birth_date:fd.get('p_birth_date')||null,p_gender:fd.get('p_gender')||null,p_occupation:fd.get('p_occupation')||null,p_marital_status:fd.get('p_marital_status')||null};const {data,error}=await supabase.rpc('dapin_update_member_profile',payload);if(error)throw error;if(!data)throw new Error('Data anggota tidak dikembalikan oleh server.');await loadMember(current.member.display_id||current.member.id);renderEditSuccess()}catch(e){alert(e?.message||'Gagal menyimpan perubahan data anggota.')}finally{busy=false;if(save){save.disabled=false;save.textContent='Simpan Perubahan'}}}
+function renderEditSuccess(){const body=document.querySelector('.md-overlay .md-body');if(!body)return;body.innerHTML=`<div class="md-empty" style="padding:32px;text-align:center"><strong>✓ Data anggota berhasil diperbarui.</strong><p>Perubahan sudah tersimpan di Supabase.</p><button class="md-button md-button-primary" data-md-back-detail>Kembali ke Detail</button></div>`}
+async function show(id){busy=true;try{await loadMember(id);document.querySelector('.md-overlay')?.remove();renderModal()}catch(e){alert(e.message)}finally{busy=false}}
+async function onModalClick(e){if(e.target.closest('[data-md-close]')||e.target.classList.contains('md-overlay')){e.currentTarget.remove();return}const doc=e.target.closest('[data-md-doc]');if(doc){try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(doc.dataset.mdDoc,300);if(error)throw error;window.open(data.signedUrl,'_blank','noopener,noreferrer')}catch(err){alert(err.message)}return}if(e.target.closest('[data-md-edit]')){renderEdit();return}if(e.target.closest('[data-md-edit-cancel]')||e.target.closest('[data-md-back-detail]')){restoreDetail();return}if(e.target.closest('[data-md-collateral]')){promptCollateral();return}}
+async function uploadFiles(files){if(!files?.length||!current||busy)return;const list=[...files];busy=true;try{for(const file of list){if(file.size>15*1024*1024)throw new Error(`${file.name}: ukuran maksimal 15 MB.`);const ext=(file.name.split('.').pop()||'bin').toLowerCase(),path=`${current.member.id}/${crypto.randomUUID()}.${ext}`;const {error}=await supabase.storage.from('dapin-documents').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});if(error)throw error;const type=file.name.toLowerCase().includes('ktp')?'ktp':file.name.toLowerCase().includes('kk')?'kk':/^image\//.test(file.type)?'photo':'other';const {error:dbError}=await supabase.from('dapin_member_documents').insert({member_id:current.member.id,document_type:type,file_name:file.name,storage_path:path,mime_type:file.type||null,file_size:file.size});if(dbError){await supabase.storage.from('dapin-documents').remove([path]);throw dbError}}await loadMember(current.member.display_id||current.member.id);restoreDetail()}catch(e){alert(e?.message||'Gagal mengunggah dokumen.')}finally{busy=false}}
+async function promptCollateral(){const type=prompt('Jenis jaminan (BPKB, sertifikat, kendaraan, elektronik, dll):');if(!type)return;const name=prompt('Nama/deskripsi jaminan:');if(!name)return;const value=Number(prompt('Perkiraan nilai jaminan (angka):')||0);try{const {error}=await supabase.from('dapin_collaterals').insert({member_id:current.member.id,collateral_type:type,name,estimated_value:value||null});if(error)throw error;await show(current.member.display_id||current.member.id)}catch(e){alert(e.message)}}
+document.addEventListener('change',e=>{const input=e.target.closest('[data-md-upload]');if(input?.files?.length){const files=[...input.files];input.value='';uploadFiles(files)}})
+document.addEventListener('submit',e=>{const form=e.target.closest('[data-md-edit-form]');if(form){e.preventDefault();saveEdit(form)}})
+document.addEventListener('click',e=>{if(busy||document.querySelector('.md-overlay'))return;if(e.target.closest('a,button,input,select,textarea,label'))return;const row=e.target.closest('.ac-table-row');if(!row||!memberRow(row))return;const id=memberDisplayId(row);if(id)show(id)})
