@@ -1,7 +1,8 @@
 import { supabase } from './main.js'
 
-// Automatically links a logged-in Supabase user to an existing DAPIN member
-// record with the same email. No client-side database credentials are used.
+// DAPIN account linking: a logged-in user is linked only to an existing
+// DAPIN member record with the exact same verified email. This module never
+// changes roles and never touches FINORA wallet/core data.
 async function linkCurrentUser() {
   if (!supabase) return null
   const { data: { session } } = await supabase.auth.getSession()
@@ -9,7 +10,6 @@ async function linkCurrentUser() {
 
   const { data, error } = await supabase.rpc('dapin_link_current_user_member')
   if (error) {
-    // A missing migration should not break login; surface only real link errors.
     if (!/function .*dapin_link_current_user_member.*does not exist/i.test(error.message || '')) {
       console.warn('DAPIN member auto-link failed:', error.message)
     }
