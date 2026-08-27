@@ -2,6 +2,19 @@ import { supabase } from './main.js'
 
 const esc = s => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;' }[c]))
 let loading = false
+let currentRole = 'member'
+
+async function getCurrentRole() {
+  if (!supabase) return 'member'
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user?.id) return 'member'
+  const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+  if (error) {
+    console.warn('DAPIN employment role lookup failed:', error.message)
+    return 'member'
+  }
+  return String(data?.role || 'member').toLowerCase()
+}
 
 async function loadMemberFromModal(modal) {
   const displayId = modal.querySelector('header small')?.textContent?.trim()
@@ -14,8 +27,11 @@ async function loadMemberFromModal(modal) {
 function employmentCard(member) {
   const statusMap = { pending:'Menunggu', active:'Aktif', inactive:'Tidak Aktif', terminated:'Berakhir' }
   const approvalMap = { pending:'Menunggu Verifikasi', approved:'Disetujui', rejected:'Ditolak' }
+  const editAction = currentRole === 'super_admin'
+    ? '<button class="md-button" type="button" data-employment-edit>✎ Edit</button>'
+    : '<span class="md-readonly-badge">Hanya Super Admin</span>'
   return `<section class="md-card md-employment-card" data-employment-card>
-    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div><button class="md-button" type="button" data-employment-edit>✎ Edit</button></div>
+    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div>${editAction}</div>
     <div class="md-summary" style="grid-template-columns:repeat(3,1fr)">
       <div><span>Bagian / Divisi</span><strong>${esc(member.department || '—')}</strong></div>
       <div><span>Jabatan</span><strong>${esc(member.position || member.occupation || '—')}</strong></div>
@@ -30,7 +46,7 @@ function employmentForm(member) {
   const options = [['pending','Menunggu'],['active','Aktif'],['inactive','Tidak Aktif'],['terminated','Berakhir']]
   const approvals = [['pending','Menunggu Verifikasi'],['approved','Disetujui'],['rejected','Ditolak']]
   return `<section class="md-edit-card md-employment-card" data-employment-card>
-    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div></div>
+    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div><span class="md-readonly-badge">Super Admin</span></div>
     <form data-employment-form>
       <div class="md-edit-grid">
         <label class="md-edit-field"><span>Bagian / Divisi</span><input name="department" value="${esc(member.department || '')}" placeholder="Contoh: Produksi"></label>
@@ -48,6 +64,7 @@ async function renderEmployment(modal, formMode = false, member = null) {
   if (loading) return
   loading = true
   try {
+    currentRole = await getCurrentRole()
     const data = member || await loadMemberFromModal(modal)
     if (!data) return
     const host = modal.querySelector('.md-body')
@@ -55,12 +72,15 @@ async function renderEmployment(modal, formMode = false, member = null) {
     const existing = host.querySelector('[data-employment-card]')
     if (existing) existing.remove()
     const node = document.createElement('div')
-    node.innerHTML = formMode ? employmentForm(data) : employmentCard(data)
+    node.innerHTML = formMode && currentRole === 'super_admin' ? employmentForm(data) : employmentCard(data)
     host.insertBefore(node.firstElementChild, host.children[1] || null)
   } finally { loading = false }
 }
 
 async function saveEmployment(form, modal) {
+  if (currentRole !== 'super_admin') {
+    throw new Error('DAPIN_SUPER_ADMIN_REQUIRED')
+  }
   const member = await loadMemberFromModal(modal)
   if (!member) throw new Error('Data anggota tidak ditemukan.')
   const fd = new FormData(form)
