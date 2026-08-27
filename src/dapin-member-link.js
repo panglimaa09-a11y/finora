@@ -1,8 +1,8 @@
 import { supabase } from './main.js'
 
-// DAPIN account linking: a logged-in user is linked only to an existing
-// DAPIN member record with the exact same verified email. This module never
-// changes roles and never touches FINORA wallet/core data.
+// Link the logged-in account to DAPIN by exact email and synchronize the
+// DAPIN role into the current user's metadata so role-based UI can react
+// without trusting editable browser state.
 async function linkCurrentUser() {
   if (!supabase) return null
   const { data: { session } } = await supabase.auth.getSession()
@@ -15,6 +15,22 @@ async function linkCurrentUser() {
     }
     return null
   }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .maybeSingle()
+
+  const role = String(profile?.role || 'member').toLowerCase()
+  const currentRole = String(session.user.user_metadata?.role || '').toLowerCase()
+  if (role !== currentRole) {
+    const { error: updateError } = await supabase.auth.updateUser({
+      data: { ...(session.user.user_metadata || {}), role },
+    })
+    if (updateError) console.warn('DAPIN role metadata sync failed:', updateError.message)
+  }
+
   return data || null
 }
 
