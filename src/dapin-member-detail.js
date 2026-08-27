@@ -34,7 +34,7 @@ function summary(){
 function documentLabel(type){return type==='ktp'?'KTP':type==='kk'?'KK':type==='photo'?'FOTO':'DOKUMEN'}
 function documentCard(d){
  const image=/^image\//i.test(d.mime_type||'')
- const preview=image?`<div class="md-doc-preview" data-md-preview="${esc(d.storage_path)}"><div class="md-doc-icon">${documentLabel(d.document_type)}</div></div>`:`<div class="md-doc-preview"><div class="md-doc-icon">${d.mime_type==='application/pdf'?'PDF':documentLabel(d.document_type)}</div></div>`
+ const preview=image?`<div class="md-doc-preview" data-md-preview="${esc(d.storage_path)}" style="width:64px;height:64px;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:#16233a"><div class="md-doc-icon">${documentLabel(d.document_type)}</div></div>`:`<div class="md-doc-preview" style="width:64px;height:64px;border-radius:10px;overflow:hidden;display:grid;place-items:center;background:#16233a"><div class="md-doc-icon">${d.mime_type==='application/pdf'?'PDF':documentLabel(d.document_type)}</div></div>`
  return `<article>${preview}<div><strong>${esc(d.file_name)}</strong><small>${esc(documentLabel(d.document_type))} • ${new Date(d.created_at).toLocaleDateString('id-ID')}</small></div><button data-md-doc="${esc(d.storage_path)}">Lihat</button></article>`
 }
 function documents(){
@@ -43,7 +43,7 @@ function documents(){
 }
 async function hydrateDocumentPreviews(root){
  const items=[...root.querySelectorAll('[data-md-preview]')]
- await Promise.all(items.map(async el=>{try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(el.dataset.mdPreview,300);if(error||!data?.signedUrl)return;el.innerHTML=`<img src="${esc(data.signedUrl)}" alt="Preview dokumen" loading="lazy">`}catch{}}))
+ await Promise.all(items.map(async el=>{try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(el.dataset.mdPreview,300);if(error||!data?.signedUrl)return;el.innerHTML=`<img src="${esc(data.signedUrl)}" alt="Preview dokumen" loading="lazy" style="width:100%;height:100%;display:block;object-fit:cover">`}catch{}}))
 }
 function collateral(){return `<section class="md-card"><div class="md-card-head"><div><span>JAMINAN</span><h3>Agunan / Jaminan</h3></div><button class="md-button" data-md-collateral>＋ Tambah Jaminan</button></div><div class="md-collateral-grid">${current.collaterals.length?current.collaterals.map(c=>`<article><div><strong>${esc(c.name)}</strong><span>${esc(c.collateral_type)}</span></div><b>${money(c.estimated_value)}</b><small>${esc(c.description||'Tanpa keterangan')} • ${esc(c.status)}</small></article>`).join(''):'<div class="md-empty">Belum ada data jaminan.</div>'}</div></section>`}
 function finances(){const loans=current.loans.map(l=>`<div><span><strong>${esc(l.display_id||l.id)}</strong><small>${money(l.amount)} • ${l.tenor} bulan</small></span><b>Sisa ${money(Math.max(0,Number(l.amount)-Number(l.paid||0)))}</b></div>`).join('')||'<div class="md-empty">Belum ada pinjaman.</div>';return `<section class="md-card"><div class="md-card-head"><span>KEUANGAN</span><h3>Pinjaman & Riwayat</h3></div><div class="md-finance-list">${loans}</div></section>`}
