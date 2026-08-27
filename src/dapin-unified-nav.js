@@ -29,7 +29,7 @@ function injectStyle() {
     .dapin-app>.dapin-sidebar{display:none!important}
     .dapin-app>.dapin-main{width:100%!important;min-width:0!important;margin:0!important;padding:0!important}
     .dapin-mobile-head{display:none!important}
-    .dapin-unified-group{margin-top:4px;padding-left:8px;display:grid;gap:2px}
+    .dapin-unified-group{margin-top:4px;padding-left:8px;display:grid;gap:2px;border-left:1px solid rgba(139,108,255,.14)}
     .dapin-unified-group .side-item{min-height:36px;margin:1px 0;padding:8px 10px 8px 16px;border-radius:9px;opacity:.92}
     .dapin-unified-group .side-item span{width:22px;font-size:14px}
     .dapin-unified-group .side-item b{font-size:11px;font-weight:600}
@@ -39,7 +39,6 @@ function injectStyle() {
     .dapin-section-label em{font-style:normal;font-size:8px;letter-spacing:.05em;color:#55ddb0;border:1px solid #55ddb022;border-radius:999px;padding:3px 6px}
     .dapin-parent{position:relative}
     .dapin-parent:after{content:'⌄';margin-left:auto;font-size:11px;color:#627087;transition:transform .18s}
-    .dapin-parent.open:after{transform:rotate(180deg)}
   `
   document.head.appendChild(style)
 }
@@ -59,38 +58,6 @@ function getCurrentView() {
   return active?.dataset?.dapinView || 'dashboard'
 }
 
-function ensureSidebarToggle() {
-  if (document.querySelector('.sidebar-toggle-fab')) return
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = 'sidebar-toggle-fab'
-  button.setAttribute('aria-label', 'Buka menu navigasi')
-  button.innerHTML = '☰'
-  document.body.appendChild(button)
-}
-
-function syncSidebarToggle() {
-  const shell = document.querySelector('.app-shell')
-  const sidebar = document.querySelector('.app-shell .sidebar')
-  const button = document.querySelector('.sidebar-toggle-fab')
-  if (!shell || !sidebar || !button) return
-  const visible = sidebar.classList.contains('open')
-  shell.classList.toggle('sidebar-visible', visible)
-  button.innerHTML = visible ? '×' : '☰'
-  button.setAttribute('aria-label', visible ? 'Tutup menu navigasi' : 'Buka menu navigasi')
-}
-
-function toggleSidebar() {
-  const trigger = document.querySelector('.app-shell .side-collapse')
-  if (trigger) {
-    trigger.click()
-    return
-  }
-  const sidebar = document.querySelector('.app-shell .sidebar')
-  sidebar?.classList.toggle('open')
-  syncSidebarToggle()
-}
-
 function ensureUnifiedNav() {
   const section = findGlobalDapinSection()
   if (!section || section.dataset.unified === '1') return
@@ -98,7 +65,7 @@ function ensureUnifiedNav() {
   if (!parent) return
 
   section.dataset.unified = '1'
-  parent.classList.add('dapin-parent','open')
+  parent.classList.add('dapin-parent')
 
   const label = document.createElement('div')
   label.className = 'dapin-section-label'
@@ -140,40 +107,29 @@ function activateDapinView(view) {
 }
 
 document.addEventListener('click', (event) => {
-  const toggle = event.target.closest?.('.sidebar-toggle-fab')
-  if (toggle) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    toggleSidebar();
-    return
-  }
-
   const button = event.target.closest?.('[data-dapin-unified-view]')
   if (button) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    event.preventDefault()
+    event.stopImmediatePropagation()
     activateDapinView(button.dataset.dapinUnifiedView)
     return
   }
 
   const dapinRoot = event.target.closest?.('.sidebar [data-view="dapin"]')
   if (dapinRoot) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    event.preventDefault()
+    event.stopImmediatePropagation()
     document.querySelector('.dapin-sidebar [data-dapin-view="dashboard"]')?.click()
   }
 }, true)
 
 function sync() {
   injectStyle()
-  ensureSidebarToggle()
   if (isDapin()) closeLegacyDapinNav()
   ensureUnifiedNav()
   syncUnifiedNav()
-  syncSidebarToggle()
 }
 
 new MutationObserver(sync).observe(document.body, { childList: true, subtree: true })
-window.setInterval(sync, 800)
 injectStyle()
 sync()
