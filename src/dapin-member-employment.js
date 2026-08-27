@@ -1,6 +1,6 @@
 import { supabase } from './main.js'
 
-const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
+const esc = s => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;' }[c]))
 let loading = false
 
 async function loadMemberFromModal(modal) {
@@ -12,22 +12,10 @@ async function loadMemberFromModal(modal) {
 }
 
 function employmentCard(member) {
-  const statusMap = {
-    pending: 'Menunggu',
-    active: 'Aktif',
-    inactive: 'Tidak Aktif',
-    terminated: 'Berakhir',
-  }
-  const approvalMap = {
-    pending: 'Menunggu Verifikasi',
-    approved: 'Disetujui',
-    rejected: 'Ditolak',
-  }
+  const statusMap = { pending:'Menunggu', active:'Aktif', inactive:'Tidak Aktif', terminated:'Berakhir' }
+  const approvalMap = { pending:'Menunggu Verifikasi', approved:'Disetujui', rejected:'Ditolak' }
   return `<section class="md-card md-employment-card" data-employment-card>
-    <div class="md-card-head">
-      <div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div>
-      <button class="md-button" type="button" data-employment-edit>✎ Edit</button>
-    </div>
+    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div><button class="md-button" type="button" data-employment-edit>✎ Edit</button></div>
     <div class="md-summary" style="grid-template-columns:repeat(3,1fr)">
       <div><span>Bagian / Divisi</span><strong>${esc(member.department || '—')}</strong></div>
       <div><span>Jabatan</span><strong>${esc(member.position || member.occupation || '—')}</strong></div>
@@ -39,17 +27,8 @@ function employmentCard(member) {
 }
 
 function employmentForm(member) {
-  const options = [
-    ['pending','Menunggu'],
-    ['active','Aktif'],
-    ['inactive','Tidak Aktif'],
-    ['terminated','Berakhir'],
-  ]
-  const approvals = [
-    ['pending','Menunggu Verifikasi'],
-    ['approved','Disetujui'],
-    ['rejected','Ditolak'],
-  ]
+  const options = [['pending','Menunggu'],['active','Aktif'],['inactive','Tidak Aktif'],['terminated','Berakhir']]
+  const approvals = [['pending','Menunggu Verifikasi'],['approved','Disetujui'],['rejected','Ditolak']]
   return `<section class="md-edit-card md-employment-card" data-employment-card>
     <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div></div>
     <form data-employment-form>
@@ -60,10 +39,7 @@ function employmentForm(member) {
         <label class="md-edit-field"><span>Tanggal Bergabung</span><input name="join_date" type="date" value="${esc(member.join_date || member.joined_at?.slice(0,10) || '')}"></label>
         <label class="md-edit-field md-edit-wide"><span>Status Verifikasi</span><select name="approval_status">${approvals.map(([v,t])=>`<option value="${v}" ${member.approval_status===v?'selected':''}>${t}</option>`).join('')}</select></label>
       </div>
-      <div class="md-edit-actions">
-        <button type="button" class="md-button" data-employment-cancel>Batal</button>
-        <button type="submit" class="md-button md-button-primary" data-employment-save>Simpan</button>
-      </div>
+      <div class="md-edit-actions"><button type="button" class="md-button" data-employment-cancel>Batal</button><button type="submit" class="md-button md-button-primary" data-employment-save>Simpan</button></div>
     </form>
   </section>`
 }
