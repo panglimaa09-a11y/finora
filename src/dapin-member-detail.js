@@ -48,19 +48,87 @@ function finances(){
  const loans=current.loans.map(l=>`<div><span><strong>${esc(l.display_id||l.id)}</strong><small>${money(l.amount)} • ${l.tenor} bulan</small></span><b>Sisa ${money(Math.max(0,Number(l.amount)-Number(l.paid||0)))}</b></div>`).join('')||'<div class="md-empty">Belum ada pinjaman.</div>'
  return `<section class="md-card"><div class="md-card-head"><span>KEUANGAN</span><h3>Pinjaman & Riwayat</h3></div><div class="md-finance-list">${loans}</div></section>`
 }
+
+function editInput(label,name,value,type='text',extra=''){
+  return `<label class="md-edit-field"><span>${label}</span><input name="${name}" type="${type}" value="${esc(value ?? '')}" ${extra}></label>`
+}
+function editSelect(label,name,value,options){
+  return `<label class="md-edit-field"><span>${label}</span><select name="${name}"><option value="">Pilih...</option>${options.map(([v,t])=>`<option value="${esc(v)}" ${value===v?'selected':''}>${t}</option>`).join('')}</select></label>`
+}
+function editForm(){
+  const m=current.member
+  return `<section class="md-edit-card"><div class="md-card-head"><div><span>EDIT PROFIL</span><h3>Ubah Data Anggota</h3></div></div><form data-md-edit-form><div class="md-edit-grid">${editInput('Nama Lengkap','p_name',m.name)}${editInput('Email','p_email',m.email,'email')}${editInput('Nomor WhatsApp','p_phone',m.phone,'tel')}${editInput('NIK / KTP','p_nik',m.nik)}${editInput('No. KK','p_kk_number',m.kk_number)}${editInput('Tempat Lahir','p_birth_place',m.birth_place)}${editInput('Tanggal Lahir','p_birth_date',m.birth_date,'date')}${editSelect('Jenis Kelamin','p_gender',m.gender,[['L','Laki-laki'],['P','Perempuan']])}${editInput('Pekerjaan','p_occupation',m.occupation)}${editSelect('Status Perkawinan','p_marital_status',m.marital_status,[['Belum Menikah','Belum Menikah'],['Menikah','Menikah'],['Cerai Hidup','Cerai Hidup'],['Cerai Mati','Cerai Mati']])}<label class="md-edit-field md-edit-wide"><span>Alamat</span><textarea name="p_address" rows="3">${esc(m.address ?? '')}</textarea></label></div><div class="md-edit-actions"><button type="button" class="md-button" data-md-edit-cancel>Batal</button><button type="submit" class="md-button md-button-primary" data-md-save>Simpan Perubahan</button></div></form></section>`
+}
+
 function renderModal(){
  if(!current) return
  const m=current.member
  const root=document.createElement('div'); root.className='md-overlay'; root.innerHTML=`<div class="md-modal"><header><div class="md-avatar">${esc((m.name||'A')[0].toUpperCase())}</div><div><span>DAPIN MEMBER</span><h2>${esc(m.name)}</h2><small>${esc(m.display_id||m.code||'')}</small></div><button class="md-close" data-md-close>×</button></header><div class="md-body">${summary()}${documents()}${collateral()}${finances()}</div></div>`
  root.addEventListener('click',onModalClick); document.body.appendChild(root)
 }
+
+function renderEdit(){
+  const body=document.querySelector('.md-overlay .md-body')
+  if(body) body.innerHTML=editForm()
+}
+
+function restoreDetail(){
+  const overlay=document.querySelector('.md-overlay')
+  if(!overlay) return
+  const body=overlay.querySelector('.md-body')
+  if(body) body.innerHTML=`${summary()}${documents()}${collateral()}${finances()}`
+}
+
+async function saveEdit(form){
+  if(!current?.member?.id||busy) return
+  const save=form.querySelector('[data-md-save]')
+  busy=true
+  if(save){save.disabled=true; save.textContent='Menyimpan...'}
+  try{
+    const fd=new FormData(form)
+    const payload={
+      p_member_id: current.member.id,
+      p_name: fd.get('p_name') || null,
+      p_email: fd.get('p_email') || null,
+      p_phone: fd.get('p_phone') || null,
+      p_address: fd.get('p_address') || null,
+      p_nik: fd.get('p_nik') || null,
+      p_kk_number: fd.get('p_kk_number') || null,
+      p_birth_place: fd.get('p_birth_place') || null,
+      p_birth_date: fd.get('p_birth_date') || null,
+      p_gender: fd.get('p_gender') || null,
+      p_occupation: fd.get('p_occupation') || null,
+      p_marital_status: fd.get('p_marital_status') || null,
+    }
+    const {data,error}=await supabase.rpc('dapin_update_member_profile',payload)
+    if(error) throw error
+    if(!data) throw new Error('Data anggota tidak dikembalikan oleh server.')
+    await loadMember(current.member.display_id||current.member.id)
+    renderEditSuccess()
+  }catch(e){
+    alert(e?.message||'Gagal menyimpan perubahan data anggota.')
+  }finally{
+    busy=false
+    if(save){save.disabled=false; save.textContent='Simpan Perubahan'}
+  }
+}
+
+function renderEditSuccess(){
+  const body=document.querySelector('.md-overlay .md-body')
+  if(!body) return
+  body.innerHTML=`<div class="md-empty" style="padding:32px;text-align:center"><strong>✓ Data anggota berhasil diperbarui.</strong><p>Perubahan sudah tersimpan di Supabase.</p><button class="md-button md-button-primary" data-md-back-detail>Kembali ke Detail</button></div>`
+}
+
 async function show(id){ busy=true; try{await loadMember(id); document.querySelector('.md-overlay')?.remove(); renderModal()}catch(e){alert(e.message)}finally{busy=false} }
 
 async function onModalClick(e){
  if(e.target.closest('[data-md-close]')||e.target.classList.contains('md-overlay')){ e.currentTarget.remove(); return }
  const doc=e.target.closest('[data-md-doc]'); if(doc){ try{const {data,error}=await supabase.storage.from('dapin-documents').createSignedUrl(doc.dataset.mdDoc,300); if(error) throw error; window.open(data.signedUrl,'_blank','noopener,noreferrer')}catch(err){alert(err.message)} return }
- const edit=e.target.closest('[data-md-edit]'); if(edit){alert('Form edit data akan memakai RPC dapin_update_member_profile. Jalankan migration profile terlebih dahulu.');return}
+ const edit=e.target.closest('[data-md-edit]'); if(edit){renderEdit();return}
+ const cancel=e.target.closest('[data-md-edit-cancel]'); if(cancel){restoreDetail();return}
+ const back=e.target.closest('[data-md-back-detail]'); if(back){restoreDetail();return}
  const add=e.target.closest('[data-md-collateral]'); if(add){promptCollateral();return}
+ const form=e.target.closest('[data-md-edit-form]'); if(form) return
 }
 
 async function upload(file){
@@ -82,6 +150,7 @@ async function promptCollateral(){
 }
 
 document.addEventListener('change',e=>{const input=e.target.closest('[data-md-upload]'); if(input?.files?.[0]) upload(input.files[0])})
+document.addEventListener('submit',e=>{const form=e.target.closest('[data-md-edit-form]'); if(form){e.preventDefault();saveEdit(form)}})
 document.addEventListener('click',e=>{
  if(busy||document.querySelector('.md-overlay')) return
  if(e.target.closest('a,button,input,select,textarea,label')) return
