@@ -1,6 +1,6 @@
 import { supabase } from './main.js'
 
-const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+const esc = s => String(s ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 let loading = false
 
 async function loadMemberFromModal(modal) {
@@ -12,7 +12,17 @@ async function loadMemberFromModal(modal) {
 }
 
 function employmentCard(member) {
-  const status = member.employee_status || 'Belum ditetapkan'
+  const statusMap = {
+    pending: 'Menunggu',
+    active: 'Aktif',
+    inactive: 'Tidak Aktif',
+    terminated: 'Berakhir',
+  }
+  const approvalMap = {
+    pending: 'Menunggu Verifikasi',
+    approved: 'Disetujui',
+    rejected: 'Ditolak',
+  }
   return `<section class="md-card md-employment-card" data-employment-card>
     <div class="md-card-head">
       <div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div>
@@ -21,21 +31,34 @@ function employmentCard(member) {
     <div class="md-summary" style="grid-template-columns:repeat(3,1fr)">
       <div><span>Bagian / Divisi</span><strong>${esc(member.department || '—')}</strong></div>
       <div><span>Jabatan</span><strong>${esc(member.position || member.occupation || '—')}</strong></div>
-      <div><span>Status Karyawan</span><strong>${esc(status)}</strong></div>
+      <div><span>Status Karyawan</span><strong>${esc(statusMap[member.employee_status] || member.employee_status || 'Menunggu')}</strong></div>
     </div>
     <div class="md-field"><span>Tanggal Bergabung</span><strong>${esc(member.join_date || member.joined_at?.slice(0,10) || '—')}</strong></div>
+    <div class="md-field"><span>Status Verifikasi</span><strong>${esc(approvalMap[member.approval_status] || member.approval_status || 'Menunggu Verifikasi')}</strong></div>
   </section>`
 }
 
 function employmentForm(member) {
+  const options = [
+    ['pending','Menunggu'],
+    ['active','Aktif'],
+    ['inactive','Tidak Aktif'],
+    ['terminated','Berakhir'],
+  ]
+  const approvals = [
+    ['pending','Menunggu Verifikasi'],
+    ['approved','Disetujui'],
+    ['rejected','Ditolak'],
+  ]
   return `<section class="md-edit-card md-employment-card" data-employment-card>
     <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div></div>
     <form data-employment-form>
       <div class="md-edit-grid">
         <label class="md-edit-field"><span>Bagian / Divisi</span><input name="department" value="${esc(member.department || '')}" placeholder="Contoh: Produksi"></label>
         <label class="md-edit-field"><span>Jabatan</span><input name="position" value="${esc(member.position || member.occupation || '')}" placeholder="Contoh: Operator Produksi"></label>
-        <label class="md-edit-field"><span>Status Karyawan</span><select name="employee_status"><option value="">Pilih...</option>${['Tetap','Kontrak','Magang','Nonaktif'].map(v=>`<option value="${v}" ${member.employee_status===v?'selected':''}>${v}</option>`).join('')}</select></label>
+        <label class="md-edit-field"><span>Status Karyawan</span><select name="employee_status"><option value="">Pilih...</option>${options.map(([v,t])=>`<option value="${v}" ${member.employee_status===v?'selected':''}>${t}</option>`).join('')}</select></label>
         <label class="md-edit-field"><span>Tanggal Bergabung</span><input name="join_date" type="date" value="${esc(member.join_date || member.joined_at?.slice(0,10) || '')}"></label>
+        <label class="md-edit-field md-edit-wide"><span>Status Verifikasi</span><select name="approval_status">${approvals.map(([v,t])=>`<option value="${v}" ${member.approval_status===v?'selected':''}>${t}</option>`).join('')}</select></label>
       </div>
       <div class="md-edit-actions">
         <button type="button" class="md-button" data-employment-cancel>Batal</button>
@@ -74,6 +97,7 @@ async function saveEmployment(form, modal) {
       p_position: fd.get('position') || null,
       p_employee_status: fd.get('employee_status') || null,
       p_join_date: fd.get('join_date') || null,
+      p_approval_status: fd.get('approval_status') || null,
     })
     if (error) throw error
     await renderEmployment(modal, false, data)
@@ -86,9 +110,7 @@ function observe() {
   const observer = new MutationObserver(() => {
     document.querySelectorAll('.md-overlay .md-body').forEach(body => {
       const modal = body.closest('.md-overlay')
-      if (modal && !body.querySelector('[data-employment-card]')) {
-        void renderEmployment(modal)
-      }
+      if (modal && !body.querySelector('[data-employment-card]')) void renderEmployment(modal)
     })
   })
   observer.observe(document.body, { childList: true, subtree: true })
@@ -98,7 +120,7 @@ document.addEventListener('click', e => {
   const modal = e.target.closest('.md-overlay')
   if (!modal) return
   if (e.target.closest('[data-employment-edit]')) { e.preventDefault(); void renderEmployment(modal, true); return }
-  if (e.target.closest('[data-employment-cancel]')) { e.preventDefault(); void renderEmployment(modal); }
+  if (e.target.closest('[data-employment-cancel]')) { e.preventDefault(); void renderEmployment(modal) }
 })
 
 document.addEventListener('submit', e => {
