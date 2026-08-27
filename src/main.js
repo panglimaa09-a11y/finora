@@ -2,7 +2,7 @@ import './style.css'
 import './app-shell.css'
 import './dapin-loan.css'
 import { createClient } from '@supabase/supabase-js'
-import { renderDapin, openDapinModal, handleDapinAction, setDapinView, deleteMember } from './dapin.js'
+import { renderDapin, openDapinModal, handleDapinAction, setDapinView, deleteMember, initDapin, getDapinState } from './dapin.js'
 import { renderLoanApplication, bindLoanEvents } from './dapin-loan.js'
 import { installDapinGraphStyles, renderDapinGraph } from './dapin-graph.js'
 
@@ -53,10 +53,7 @@ function navItem(id, label, icon, extra = '') {
 function dapinNavItem(view, label, icon) {
   return `<button class="side-item dapin-nav-item ${state.view === 'dapin' && view === getDapinView() ? 'active' : ''}" type="button" data-dapin-nav="${esc(view)}"><span>${icon}</span><b>${label}</b></button>`
 }
-function getDapinView() {
-  if (typeof window.__FINORA_DAPIN_VIEW__ === 'string') return window.__FINORA_DAPIN_VIEW__
-  try { const data = JSON.parse(localStorage.getItem('finora_dapin_v2') || '{}'); return data.view || 'dashboard' } catch { return 'dashboard' }
-}
+function getDapinView() { return getDapinState().view || 'dashboard' }
 function buildDapinSection() {
   const items = isAdmin(state.user) ? DAPIN_ADMIN_NAV : DAPIN_MEMBER_NAV
   return `<div class="side-section dapin-sidebar-section"><small>DAPIN BALONGBENDO</small>${navItem('dapin', 'Dashboard', 'D', 'dapin-root')}${items.filter(([id]) => id !== 'dashboard').map(([id, icon, label]) => dapinNavItem(id, label, icon)).join('')}</div>`
@@ -101,10 +98,10 @@ function appView() {
 }
 function render() { if (!configured) { setup(); return } if (state.loading) { app.innerHTML = '<div class="loading">Memuat FINORA…</div>'; return } if (!state.user) { auth(); return } app.innerHTML = appView(); if (state.view === 'loan-apply') bindLoanEvents() }
 async function signIn(provider) { state.error = ''; render(); const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin } }); if (error) { state.error = error.message; render() } }
-async function invoke(name, body) { const { data: { session } } = await supabase.auth.getSession(); if (!session) throw new Error('Session login berakhir.'); const { data, error } = await supabase.functions.invoke(name, { body, headers: { Authorization: `Bearer ${session.access_token}` } }); if (error) throw new Error(error.message || `Edge Function ${name} gagal`); if (data?.error) throw new Error(data.error); return data }
 async function doTopup() { const amount = Number(document.getElementById('topupAmount')?.value); const method = document.getElementById('topupMethod')?.value; if (!Number.isInteger(amount) || amount < 10000) return alert('Minimum top up Rp10.000.'); try { const data = await invoke('provider-create-topup', { amount, method }); const url = safeUrl(data.payment_url); state.modal = `<div class="modal-wrap"><div class="modal"><h2>Pembayaran dibuat</h2><p>Top Up ${money(amount)} menunggu pembayaran.</p>${url ? `<a class="primary wide" href="${esc(url)}" target="_blank" rel="noopener">Lanjut ke Pembayaran</a>` : ''}<button class="secondary wide" id="closeModal" type="button">Tutup</button></div></div>`; await loadWallet(); render() } catch (error) { alert(error.message) } }
-function handleDapinForm(form) { try { const values = Object.fromEntries(new FormData(form).entries()); handleDapinAction(form.dataset.dapinForm, values); state.modal = null; render() } catch (error) { alert(error.message) } }
-function openDapinView(view) { if (view === 'grafik') { state.view = 'dapin-graph'; state.sidebar = false; render(); return } window.__FINORA_DAPIN_VIEW__ = view; setDapinView(view); state.view = 'dapin'; state.sidebar = false; render() }
+async function invoke(name, body) { const { data: { session } } = await supabase.auth.getSession(); if (!session) throw new Error('Session login berakhir.'); const { data, error } = await supabase.functions.invoke(name, { body, headers: { Authorization: `Bearer ${session.access_token}` } }); if (error) throw new Error(error.message || `Edge Function ${name} gagal`); if (data?.error) throw new Error(data.error); return data }
+async function handleDapinForm(form) { try { const values = Object.fromEntries(new FormData(form).entries()); await handleDapinAction(form.dataset.dapinForm, values); state.modal = null; render() } catch (error) { alert(error.message) } }
+async function openDapinView(view) { if (view === 'grafik') { await initDapin(state.user); state.view = 'dapin-graph'; state.sidebar = false; render(); return } await initDapin(state.user); setDapinView(view); state.view = 'dapin'; state.sidebar = false; render() }
 
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('button, a')
@@ -112,23 +109,23 @@ document.addEventListener('click', async (event) => {
   if (button.dataset.provider) return signIn(button.dataset.provider)
   if (button.dataset.sidebar !== undefined) { state.sidebar = !state.sidebar; render(); return }
   if (button.id === 'logout') { await supabase.auth.signOut(); return }
-  if (button.dataset.dapinNav !== undefined) { event.preventDefault(); openDapinView(button.dataset.dapinNav); return }
-  if (button.dataset.view) { event.preventDefault(); const nextView = button.dataset.view; if (nextView === 'dapin') window.__FINORA_DAPIN_VIEW__ = 'dashboard'; state.view = nextView; state.sidebar = false; state.error = ''; if (['dashboard','topup','transactions','withdraw'].includes(state.view)) await loadWallet(); if (state.view === 'dapin') setDapinView('dashboard'); render(); return }
+  if (button.dataset.dapinNav !== undefined) { event.preventDefault(); await openDapinView(button.dataset.dapinNav); return }
+  if (button.dataset.view) { event.preventDefault(); const nextView = button.dataset.view; if (nextView === 'dapin') { await initDapin(state.user); setDapinView('dashboard') } state.view = nextView; state.sidebar = false; state.error = ''; if (['dashboard','topup','transactions','withdraw'].includes(state.view)) await loadWallet(); render(); return }
   if (button.id === 'refresh') { state.error = ''; await loadWallet(); render(); return }
   if (button.id === 'submitTopup') return doTopup()
   if (button.id === 'closeModal') { state.modal = null; render(); return }
   if (button.dataset.dapinClose !== undefined) { state.modal = null; render(); return }
   if (state.view === 'dapin') {
-    if (button.dataset.dapinView) { setDapinView(button.dataset.dapinView); window.__FINORA_DAPIN_VIEW__ = button.dataset.dapinView; render(); return }
+    if (button.dataset.dapinView) { setDapinView(button.dataset.dapinView); render(); return }
     if (button.dataset.dapinAction === 'loan-apply') { state.view = 'loan-apply'; state.sidebar = false; render(); return }
     if (button.dataset.dapinAction && button.dataset.dapinAction !== 'delete-member') { state.modal = openDapinModal(button.dataset.dapinAction); render(); return }
-    if (button.dataset.dapinAction === 'delete-member' && button.dataset.id) { if (confirm('Hapus anggota ini?')) { deleteMember(button.dataset.id); render() } }
+    if (button.dataset.dapinAction === 'delete-member' && button.dataset.id) { if (confirm('Anggota akan dinonaktifkan, bukan dihapus permanen. Lanjutkan?')) { await deleteMember(button.dataset.id); render() } }
   }
 })
 
-document.addEventListener('submit', (event) => { if (event.target.matches('[data-dapin-form]')) { event.preventDefault(); handleDapinForm(event.target) } })
+document.addEventListener('submit', async (event) => { if (event.target.matches('[data-dapin-form]')) { event.preventDefault(); await handleDapinForm(event.target) } })
 
 if (configured) {
-  supabase.auth.onAuthStateChange(async (_event, session) => { state.user = session?.user || null; if (state.user) await loadWallet(); else { state.wallet = null; state.transactions = [] }; state.loading = false; state.view = 'dashboard'; state.sidebar = false; render() })
-  ;(async () => { const { data: { session } } = await supabase.auth.getSession(); state.user = session?.user || null; if (state.user) await loadWallet(); state.loading = false; render() })()
+  supabase.auth.onAuthStateChange(async (_event, session) => { state.user = session?.user || null; if (state.user) { await loadWallet(); await initDapin(state.user) } else { state.wallet = null; state.transactions = [] }; state.loading = false; state.view = 'dashboard'; state.sidebar = false; render() })
+  ;(async () => { const { data: { session } } = await supabase.auth.getSession(); state.user = session?.user || null; if (state.user) { await loadWallet(); await initDapin(state.user) } state.loading = false; render() })()
 } else { state.loading = false; render() }
