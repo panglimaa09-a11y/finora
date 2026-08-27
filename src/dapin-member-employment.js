@@ -2,17 +2,12 @@ import { supabase } from './main.js'
 
 const esc = s => String(s ?? '').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;' }[c]))
 let loading = false
-let currentRole = 'member'
 
-async function getCurrentRole() {
+async function currentRole() {
   if (!supabase) return 'member'
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user?.id) return 'member'
-  const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  if (error) {
-    console.warn('DAPIN employment role lookup failed:', error.message)
-    return 'member'
-  }
+  if (!user) return 'member'
+  const { data } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
   return String(data?.role || 'member').toLowerCase()
 }
 
@@ -24,14 +19,15 @@ async function loadMemberFromModal(modal) {
   return data || null
 }
 
-function employmentCard(member) {
+function employmentCard(member, role) {
   const statusMap = { pending:'Menunggu', active:'Aktif', inactive:'Tidak Aktif', terminated:'Berakhir' }
   const approvalMap = { pending:'Menunggu Verifikasi', approved:'Disetujui', rejected:'Ditolak' }
-  const editAction = currentRole === 'super_admin'
+  const canEdit = ['hr','super_admin'].includes(role)
+  const edit = canEdit
     ? '<button class="md-button" type="button" data-employment-edit>✎ Edit</button>'
-    : '<span class="md-readonly-badge">Hanya Super Admin</span>'
+    : '<span style="font-size:9px;color:#77869a;padding:8px 10px;border:1px solid #26364e;border-radius:10px">🔒 Hanya HR / Super Admin</span>'
   return `<section class="md-card md-employment-card" data-employment-card>
-    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div>${editAction}</div>
+    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Data Karyawan</h3></div>${edit}</div>
     <div class="md-summary" style="grid-template-columns:repeat(3,1fr)">
       <div><span>Bagian / Divisi</span><strong>${esc(member.department || '—')}</strong></div>
       <div><span>Jabatan</span><strong>${esc(member.position || member.occupation || '—')}</strong></div>
@@ -46,7 +42,7 @@ function employmentForm(member) {
   const options = [['pending','Menunggu'],['active','Aktif'],['inactive','Tidak Aktif'],['terminated','Berakhir']]
   const approvals = [['pending','Menunggu Verifikasi'],['approved','Disetujui'],['rejected','Ditolak']]
   return `<section class="md-edit-card md-employment-card" data-employment-card>
-    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div><span class="md-readonly-badge">Super Admin</span></div>
+    <div class="md-card-head"><div><span>KEPEGAWAIAN</span><h3>Edit Data Karyawan</h3></div></div>
     <form data-employment-form>
       <div class="md-edit-grid">
         <label class="md-edit-field"><span>Bagian / Divisi</span><input name="department" value="${esc(member.department || '')}" placeholder="Contoh: Produksi"></label>
@@ -64,23 +60,22 @@ async function renderEmployment(modal, formMode = false, member = null) {
   if (loading) return
   loading = true
   try {
-    currentRole = await getCurrentRole()
     const data = member || await loadMemberFromModal(modal)
     if (!data) return
+    const role = await currentRole()
     const host = modal.querySelector('.md-body')
     if (!host) return
     const existing = host.querySelector('[data-employment-card]')
     if (existing) existing.remove()
     const node = document.createElement('div')
-    node.innerHTML = formMode && currentRole === 'super_admin' ? employmentForm(data) : employmentCard(data)
+    node.innerHTML = formMode ? (['hr','super_admin'].includes(role) ? employmentForm(data) : employmentCard(data, role)) : employmentCard(data, role)
     host.insertBefore(node.firstElementChild, host.children[1] || null)
   } finally { loading = false }
 }
 
 async function saveEmployment(form, modal) {
-  if (currentRole !== 'super_admin') {
-    throw new Error('DAPIN_SUPER_ADMIN_REQUIRED')
-  }
+  const role = await currentRole()
+  if (!['hr','super_admin'].includes(role)) throw new Error('DAPIN_EMPLOYMENT_PERMISSION_DENIED')
   const member = await loadMemberFromModal(modal)
   if (!member) throw new Error('Data anggota tidak ditemukan.')
   const fd = new FormData(form)
