@@ -91,11 +91,13 @@ update public.dapin_loans set loan_no = nextval('public.dapin_loan_no_seq') wher
 update public.dapin_loan_payments set payment_no = nextval('public.dapin_payment_no_seq') where payment_no is null;
 update public.dapin_transactions set transaction_no = nextval('public.dapin_transaction_no_seq') where transaction_no is null;
 
-select setval('public.dapin_member_no_seq', coalesce((select max(member_no) from public.dapin_members),0), true);
-select setval('public.dapin_savings_no_seq', coalesce((select max(record_no) from public.dapin_savings),0), true);
-select setval('public.dapin_loan_no_seq', coalesce((select max(loan_no) from public.dapin_loans),0), true);
-select setval('public.dapin_payment_no_seq', coalesce((select max(payment_no) from public.dapin_loan_payments),0), true);
-select setval('public.dapin_transaction_no_seq', coalesce((select max(transaction_no) from public.dapin_transactions),0), true);
+-- Empty tables need the sequence to be positioned just before 1;
+-- populated tables continue after their current highest number.
+select setval('public.dapin_member_no_seq', greatest(coalesce((select max(member_no) from public.dapin_members),0),1), coalesce((select max(member_no) from public.dapin_members),0) > 0);
+select setval('public.dapin_savings_no_seq', greatest(coalesce((select max(record_no) from public.dapin_savings),0),1), coalesce((select max(record_no) from public.dapin_savings),0) > 0);
+select setval('public.dapin_loan_no_seq', greatest(coalesce((select max(loan_no) from public.dapin_loans),0),1), coalesce((select max(loan_no) from public.dapin_loans),0) > 0);
+select setval('public.dapin_payment_no_seq', greatest(coalesce((select max(payment_no) from public.dapin_loan_payments),0),1), coalesce((select max(payment_no) from public.dapin_loan_payments),0) > 0);
+select setval('public.dapin_transaction_no_seq', greatest(coalesce((select max(transaction_no) from public.dapin_transactions),0),1), coalesce((select max(transaction_no) from public.dapin_transactions),0) > 0);
 
 create or replace function public.dapin_assign_ids()
 returns trigger language plpgsql as $$
@@ -238,12 +240,11 @@ grant execute on function public.dapin_add_collateral(uuid,text,text,text,numeri
 insert into storage.buckets(id,name,public) values('dapin-documents','dapin-documents',false)
 on conflict (id) do update set public=false;
 
--- Storage is private. Admins can read/write objects; members can read their own member folder.
 drop policy if exists dapin_documents_read on storage.objects;
 create policy dapin_documents_read on storage.objects for select using (
   bucket_id='dapin-documents' and (
     public.dapin_has_permission('dapin.read.all')
-    or split_part(name,'/',1)=auth.uid()::text
+    or exists (select 1 from public.dapin_members m where m.user_id=auth.uid() and m.id=nullif(split_part(name,'/',1),'')::uuid)
   )
 );
 drop policy if exists dapin_documents_insert on storage.objects;
