@@ -43,10 +43,18 @@ if (supabase) {
     if (!session?.user) return
     if (event === 'SIGNED_IN') {
       const member = await linkCurrentUser()
-      // The DAPIN app loads its member data during the same auth transition.
-      // Refresh once after the server-side link so member RLS sees the new
-      // user_id immediately. No member data is stored locally.
-      if (member) window.location.reload()
+      // Reload AT MOST ONCE per sign-in so member RLS sees the new user_id.
+      // The previous unguarded reload raced with the reload in
+      // dapin-admin-access-fix.js on the Google OAuth callback page, firing
+      // full page reloads before Supabase finished persisting the session —
+      // which bounced users straight back to the login screen (and looped
+      // forever for admin accounts). sessionStorage survives the reload
+      // within the same tab but resets on a fresh tab, keeping the
+      // one-time RLS refresh intact. No member data is stored locally.
+      if (member && !sessionStorage.getItem('finora_member_link_done')) {
+        sessionStorage.setItem('finora_member_link_done', '1')
+        window.location.reload()
+      }
       return
     }
     if (event === 'USER_UPDATED') void linkCurrentUser()

@@ -59,9 +59,13 @@ async function sync() {
         console.warn('DAPIN admin role sync failed:', error.message)
         return
       }
-      // DAPIN decides its internal dashboard from the authenticated user metadata.
-      // Reload once after the server-side profile role has been copied into session metadata.
-      window.location.reload()
+      // No full page reload here. updateUser emits USER_UPDATED, which the
+      // role system modules (dapin-role-system.js, dapin-role-runtime-fix.js)
+      // already listen to and re-bootstrap from, so the admin UI updates
+      // without one. The previous window.location.reload() raced with the
+      // reload in dapin-member-link.js on the Google OAuth callback page and
+      // caused the post-login redirect loop / bounce back to sign-in.
+      window.dispatchEvent(new CustomEvent('dapin:admin-role-synced', { detail: { role } }))
       return
     }
 
