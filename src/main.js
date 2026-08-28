@@ -6,8 +6,8 @@ import { renderDapin, openDapinModal, handleDapinAction, setDapinView, deleteMem
 import { renderLoanApplication, bindLoanEvents } from './dapin-loan.js'
 import { installDapinGraphStyles, renderDapinGraph } from './dapin-graph.js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY
 const app = document.getElementById('app')
 const ADMIN_EMAILS = ['panglimaa09@gmail.com', 'deavani1705@gmail.com']
 const configured = Boolean(supabaseUrl && supabaseAnonKey)
