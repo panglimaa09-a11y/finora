@@ -1,4 +1,5 @@
 import { supabase } from './main.js'
+import { syncRoleMetadata } from './role-sync.js'
 
 let busy = false
 const ADMIN_ROLES = new Set(['admin', 'super_admin'])
@@ -49,25 +50,15 @@ async function sync() {
     if (!user) return
 
     const role = await getRole(user)
-    const metadataRole = String(user.user_metadata?.role || '').toLowerCase()
 
-    if (ADMIN_ROLES.has(role) && metadataRole !== role) {
-      const { error } = await supabase.auth.updateUser({
-        data: { ...(user.user_metadata || {}), role },
-      })
-      if (error) {
-        console.warn('DAPIN admin role sync failed:', error.message)
-        return
-      }
-      // No full page reload here. updateUser emits USER_UPDATED, which the
-      // role system modules (dapin-role-system.js, dapin-role-runtime-fix.js)
-      // already listen to and re-bootstrap from, so the admin UI updates
-      // without one. The previous window.location.reload() raced with the
-      // reload in dapin-member-link.js on the Google OAuth callback page and
-      // caused the post-login redirect loop / bounce back to sign-in.
-      window.dispatchEvent(new CustomEvent('dapin:admin-role-synced', { detail: { role } }))
-      return
-    }
+    // Shared, serialized metadata sync (see role-sync.js). This module and
+    // dapin-role-system.js previously wrote CONFLICTING role metadata
+    // (this one stored the real role in metadata.role, that one forced
+    // 'admin'), so every USER_UPDATED event re-triggered the other module's
+    // updateUser forever — an infinite token-rotation ping-pong that froze
+    // the page right after login. All role modules now use one in-flight
+    // guarded sync, so at most one updateUser can ever run at a time.
+    await syncRoleMetadata(user)
 
     if (ADMIN_ROLES.has(role)) injectAdminNavigation()
   } finally {

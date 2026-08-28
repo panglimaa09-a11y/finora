@@ -1,5 +1,6 @@
 import { supabase } from './main.js'
 import { initDapin, renderDapin, setDapinView, getDapinState } from './dapin.js'
+import { syncRoleMetadata } from './role-sync.js'
 
 const CONFIG = {
   member: { label:'Member', views:['dashboard','simpanan','pinjaman','angsuran','transaksi','profil'] },
@@ -29,10 +30,9 @@ async function bootstrap(user){
     // DAPIN's legacy renderer has an admin/member binary UI.
     // Elevated roles use the admin renderer, while this module filters the visible modules.
     if(role!=='member'){
-      const metaRole=String(user.user_metadata?.role||'').toLowerCase()
-      if(metaRole!=='admin'){
-        await supabase.auth.updateUser({data:{...(user.user_metadata||{}),role:'admin',dapin_role:role,dapin_role_label:cfg.label}})
-      }
+      // Persist the authoritative role through the shared, serialized sync so
+      // no other role module can race updateUser again (see role-sync.js).
+      await syncRoleMetadata(user)
       await initDapin({...user,user_metadata:{...(user.user_metadata||{}),role:'admin',dapin_role:role}})
     }else{
       await initDapin(user)

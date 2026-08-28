@@ -1,4 +1,5 @@
 import { supabase } from './main.js'
+import { syncRoleMetadata } from './role-sync.js'
 
 // DAPIN account linking: a logged-in user is linked only to an existing
 // DAPIN member record with the exact same verified email. The link is done
@@ -17,21 +18,13 @@ async function linkCurrentUser() {
     return null
   }
 
-  // Keep the UI role synchronized with the authoritative profiles table.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', session.user.id)
-    .maybeSingle()
-
-  const role = String(profile?.role || 'member').toLowerCase()
-  const currentRole = String(session.user.user_metadata?.role || '').toLowerCase()
-  if (role !== currentRole) {
-    const { error: updateError } = await supabase.auth.updateUser({
-      data: { ...(session.user.user_metadata || {}), role },
-    })
-    if (updateError) console.warn('DAPIN role metadata sync failed:', updateError.message)
-  }
+  // Keep the UI role synchronized with the authoritative profiles table via
+  // the shared, serialized metadata sync (role-sync.js). The previous raw
+  // auth.updateUser() here raced with the identical call in two other modules
+  // and rotated the session tokens concurrently, invalidating each other's
+  // refresh tokens and leaving the post-login session in a refresh/update
+  // ping-pong (page hang after Google login).
+  await syncRoleMetadata(session.user)
 
   return data || null
 }
