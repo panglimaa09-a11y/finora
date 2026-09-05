@@ -93,7 +93,7 @@ function renderDapinShell() {
 function appView() {
   if (state.view === 'dapin') return layout(renderDapinShell())
   if (state.view === 'dapin-graph') { installDapinGraphStyles(); return layout(`<section class="dapin-app dapin-admin-panel"><div class="dapin-main">${renderDapinGraph()}</div></section>`) }
-  const content = state.view === 'admin' && isAdmin(state.user) ? admin() : state.view === 'topup' ? topup() : state.view === 'transactions' ? transactions() : state.view === 'withdraw' ? withdraw() : state.view === 'loan-apply' ? renderLoanApplication() : dashboard()
+  const content = state.view === 'admin' && isAdmin(state.user) ? admin() : state.view === 'topup' ? topup() : state.view === 'transactions' ? transactions() : state.view === 'withdraw' ? withdraw() : state.view === 'loan-apply' ? '<div class="loading">Memuat formulir pinjaman…</div>' : dashboard()
   return layout(content)
 }
 function render() { if (!configured) { setup(); return } if (state.loading) { app.innerHTML = '<div class="loading">Memuat FINORA…</div>'; return } if (!state.user) { auth(); return } app.innerHTML = appView(); if (state.view === 'loan-apply') bindLoanEvents() }

@@ -43,4 +43,9 @@ function installStyle() {
 
 installStyle()
 enhanceMembers()
-new MutationObserver(enhanceMembers).observe(document.documentElement, { childList: true, subtree: true })
+// Observe only document.body (not documentElement) and skip if member list isn't present
+// to avoid costly subtree scans on unrelated DOM changes.
+const _contactObserver = new MutationObserver(() => {
+  if (document.querySelector('.dapin-member-list')) enhanceMembers()
+})
+_contactObserver.observe(document.body, { childList: true, subtree: true })

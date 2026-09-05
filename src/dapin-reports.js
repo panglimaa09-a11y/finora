@@ -31,6 +31,11 @@ const render=()=>{
  root.appendChild(el)
 }
 render()
-new MutationObserver(render).observe(document.documentElement,{childList:true,subtree:true})
-setInterval(render,1200)
-window.addEventListener('storage',render)
+// Observe only the DAPIN admin panel container (not the entire document)
+// to avoid triggering on every unrelated DOM change.
+const _reportObserver = new MutationObserver(() => {
+  if (isReport()) render()
+})
+const _reportTarget = document.querySelector('.dapin-admin-panel .dapin-main') || document.body
+_reportObserver.observe(_reportTarget, { childList: true, subtree: false })
+window.addEventListener('storage', render)
