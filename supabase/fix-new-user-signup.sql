@@ -63,16 +63,30 @@ drop function if exists public.handle_new_profile() cascade;
 
 -- 3) Function wallet: buat wallet saat user baru terdaftar
 --    SECURITY DEFINER = jalan sebagai pemilik tabel (bypass RLS)
+--    Kolom wallet_code bersifat opsional: di beberapa instalasi tabel
+--    wallets tidak punya kolom itu. Insert menyesuaikan otomatis.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  has_code boolean;
 begin
-  insert into public.wallets (user_id, wallet_code)
-  values (new.id, 'FN-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)))
-  on conflict (user_id) do nothing;
+  if not exists (select 1 from public.wallets where user_id = new.id) then
+    select exists(
+      select 1 from information_schema.columns
+      where table_schema = 'public' and table_name = 'wallets' and column_name = 'wallet_code'
+    ) into has_code;
+
+    if has_code then
+      insert into public.wallets (user_id, wallet_code)
+      values (new.id, 'FN-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)));
+    else
+      insert into public.wallets (user_id) values (new.id);
+    end if;
+  end if;
   return new;
 end;
 $$;
@@ -115,12 +129,30 @@ create trigger on_auth_user_created_profile
   for each row execute function public.handle_new_profile();
 
 -- 6) Backfill akun lama yang belum punya wallet / profile
-insert into public.wallets (user_id, wallet_code)
-select u.id, 'FN-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10))
-from auth.users u
-left join public.wallets w on w.user_id = u.id
-where w.id is null
-on conflict (user_id) do nothing;
+do $$
+declare
+  u record;
+  has_code boolean;
+begin
+  select exists(
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'wallets' and column_name = 'wallet_code'
+  ) into has_code;
+
+  for u in
+    select u2.id
+    from auth.users u2
+    left join public.wallets w on w.user_id = u2.id
+    where w.id is null
+  loop
+    if has_code then
+      insert into public.wallets (user_id, wallet_code)
+      values (u.id, 'FN-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)));
+    else
+      insert into public.wallets (user_id) values (u.id);
+    end if;
+  end loop;
+end $$;
 
 insert into public.profiles (id, full_name, email, role)
 select
