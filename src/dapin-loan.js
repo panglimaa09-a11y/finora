@@ -1,8 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null
+import { supabase } from './supabase-client.js'
 
 const rupiah = (value) => new Intl.NumberFormat('id-ID', {
   style: 'currency', currency: 'IDR', maximumFractionDigits: 0,
@@ -17,7 +13,7 @@ let identity = null
 let applications = []
 
 async function loadData() {
-  if (!supabase) throw new Error('Supabase environment belum tersedia.')
+  if (!supabase) throw new Error('Supabase belum dikonfigurasi.')
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Session login tidak ditemukan.')
 

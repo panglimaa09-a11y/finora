@@ -1,17 +1,14 @@
 import './style.css'
 import './app-shell.css'
 import './dapin-loan.css'
-import { createClient } from '@supabase/supabase-js'
+import { supabase, configured } from './supabase-client.js'
 import { renderDapin, openDapinModal, handleDapinAction, setDapinView, deleteMember, initDapin, getDapinState } from './dapin.js'
 import { renderLoanApplication, bindLoanEvents } from './dapin-loan.js'
 import { installDapinGraphStyles, renderDapinGraph } from './dapin-graph.js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY
+export { supabase }
 const app = document.getElementById('app')
 const ADMIN_EMAILS = ['panglimaa09@gmail.com', 'deavani1705@gmail.com']
-const configured = Boolean(supabaseUrl && supabaseAnonKey)
-export const supabase = configured ? createClient(supabaseUrl, supabaseAnonKey) : null
 
 const money = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(n || 0))
 const esc = (s) => String(s ?? '').replace(/[&<>'"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]))
@@ -19,6 +16,9 @@ const safeUrl = (value) => { try { const url = new URL(value); return ['http:', 
 const isAdmin = (user) => ADMIN_EMAILS.includes(String(user?.email || '').toLowerCase())
 
 let state = { user:null, wallet:null, transactions:[], view:'dashboard', loading:true, error:'', modal:null, sidebar:false }
+
+const qp = new URLSearchParams(location.search)
+if (qp.get('error')) { state.error = qp.get('error_description') || qp.get('error') || 'Login gagal, silakan ulangi.'; history.replaceState(null, '', location.pathname) }
 
 const DAPIN_ADMIN_NAV = [
   ['dashboard','⌂','Dashboard'], ['anggota','♙','Anggota'], ['simpanan','◈','Simpanan'], ['pinjaman','▣','Pinjaman'],
@@ -97,7 +97,7 @@ function appView() {
   return layout(content)
 }
 function render() { if (!configured) { setup(); return } if (state.loading) { app.innerHTML = '<div class="loading">Memuat FINORA…</div>'; return } if (!state.user) { auth(); return } app.innerHTML = appView(); if (state.view === 'loan-apply') bindLoanEvents() }
-async function signIn(provider) { state.error = ''; render(); const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin } }); if (error) { state.error = error.message; render() } }
+async function signIn(provider) { state.error = ''; render(); const options = { redirectTo: location.origin }; if (provider === 'google') options.queryParams = { prompt: 'select_account' }; const { error } = await supabase.auth.signInWithOAuth({ provider, options }); if (error) { state.error = error.message; render() } }
 async function doTopup() { const amount = Number(document.getElementById('topupAmount')?.value); const method = document.getElementById('topupMethod')?.value; if (!Number.isInteger(amount) || amount < 10000) return alert('Minimum top up Rp10.000.'); try { const data = await invoke('provider-create-topup', { amount, method }); const url = safeUrl(data.payment_url); state.modal = `<div class="modal-wrap"><div class="modal"><h2>Pembayaran dibuat</h2><p>Top Up ${money(amount)} menunggu pembayaran.</p>${url ? `<a class="primary wide" href="${esc(url)}" target="_blank" rel="noopener">Lanjut ke Pembayaran</a>` : ''}<button class="secondary wide" id="closeModal" type="button">Tutup</button></div></div>`; await loadWallet(); render() } catch (error) { alert(error.message) } }
 async function invoke(name, body) { const { data: { session } } = await supabase.auth.getSession(); if (!session) throw new Error('Session login berakhir.'); const { data, error } = await supabase.functions.invoke(name, { body, headers: { Authorization: `Bearer ${session.access_token}` } }); if (error) throw new Error(error.message || `Edge Function ${name} gagal`); if (data?.error) throw new Error(data.error); return data }
 async function handleDapinForm(form) { try { const values = Object.fromEntries(new FormData(form).entries()); await handleDapinAction(form.dataset.dapinForm, values); state.modal = null; render() } catch (error) { alert(error.message) } }
