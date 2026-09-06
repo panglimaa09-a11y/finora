@@ -174,7 +174,7 @@ on conflict (id) do nothing;
 --      on_auth_user_created_wallet -> handle_new_user
 --      on_auth_user_created_profile -> handle_new_profile
 select tgname as trigger_name,
-       tgproc::regproc as calls_function
+       tgfoid::regproc as calls_function
 from pg_trigger
 where tgrelid = 'auth.users'::regclass
   and not tgisinternal
