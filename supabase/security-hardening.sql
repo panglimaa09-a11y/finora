@@ -44,64 +44,12 @@ begin
   end loop;
 end $$;
 
--- 2) REVOKE anon: tanpa login (anon) TIDAK boleh memanggil fungsi berikut.
---    (kecuali checker RLS yang sengaja dibiarkan)
-do $$
-declare r record;
-begin
-  for r in
-    select p.oid, n.nspname, p.proname
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname not in (
-        'is_admin',
-        'is_dapin_admin',
-        'dapin_has_permission',
-        'dapin_current_role'
-      )
-      and p.proname in (
-        'admin_approve_loan',
-        'admin_reject_loan',
-        'admin_set_credit_profile',
-        'admin_start_loan_review',
-        'calculate_loan',
-        'create_dapin_member',
-        'create_withdrawal',
-        'dapin_add_collateral',
-        'dapin_add_member_document',
-        'dapin_audit_change',
-        'dapin_create_loan',
-        'dapin_create_member',
-        'dapin_record_payment',
-        'dapin_record_saving',
-        'dapin_record_transaction',
-        'dapin_set_loan_status',
-        'dapin_set_member_status',
-        'dapin_set_user_role',
-        'dapin_sync_auth_role',
-        'dapin_update_member_employment',
-        'dapin_update_member_profile',
-        'ensure_wallet',
-        'handle_new_profile',
-        'handle_new_user',
-        'post_topup',
-        'set_dapin_member_identity',
-        'submit_dapin_loan',
-        'validate_member_loan'
-      )
-  loop
-    execute format(
-      'revoke execute on function %I.%I(%s) from anon',
-      r.nspname, r.proname,
-      pg_get_function_identity_arguments(r.oid)
-    );
-  end loop;
-end $$;
-
--- 3) REVOKE authenticated: fungsi uang/admin yang TIDAK dipanggil front-end
+-- 2) Blokir TOTAL (anon MAUPUN authenticated TIDAK boleh memanggil).
+--    Catatan: grant default fungsi PostgreSQL adalah PUBLIC, jadi revoke
+--    dari "public" (bukan sekadar anon/authenticated) agar efektif.
+--    Daftar ini: fungsi uang/admin yang TIDAK dipakai front-end.
 --    - post_topup TIDAK memeriksa auth.uid() (bisa membebani topup orang lain)
---    - create_withdrawal / ensure_wallet / admin_* tidak digunakan aplikasi
+--    - ensure_wallet / create_withdrawal / admin_* belum digunakan aplikasi
 --    Kalau nanti panel admin membutuhkannya, tinggal GRANT EXECUTE lagi.
 do $$
 declare r record;
@@ -128,7 +76,47 @@ begin
       )
   loop
     execute format(
-      'revoke execute on function %I.%I(%s) from authenticated',
+      'revoke execute on function %I.%I(%s) from public',
+      r.nspname, r.proname,
+      pg_get_function_identity_arguments(r.oid)
+    );
+  end loop;
+end $$;
+
+-- 3) Fungsi yang DIPANGGIL aplikasi saat login (authenticated):
+--    anon diblokir, authenticated tetap bisa.
+--    (Masing-masing sudah punya cek izin internal dapin_has_permission,
+--     sehingga aman dijalankan oleh user yang sudah login.)
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid, n.nspname, p.proname
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'submit_dapin_loan',
+        'dapin_create_member',
+        'dapin_update_member_profile',
+        'dapin_record_saving',
+        'dapin_create_loan',
+        'dapin_record_payment',
+        'dapin_record_transaction',
+        'dapin_set_member_status',
+        'dapin_set_loan_status',
+        'dapin_add_collateral',
+        'dapin_add_member_document',
+        'dapin_update_member_employment'
+      )
+  loop
+    execute format(
+      'revoke execute on function %I.%I(%s) from public',
+      r.nspname, r.proname,
+      pg_get_function_identity_arguments(r.oid)
+    );
+    execute format(
+      'grant execute on function %I.%I(%s) to authenticated',
       r.nspname, r.proname,
       pg_get_function_identity_arguments(r.oid)
     );
